@@ -6,25 +6,10 @@
 [![Swift](https://img.shields.io/badge/swift-5.10%2B-orange)](#)
 [![License](https://img.shields.io/badge/license-MIT-green)](#license)
 
-Mia lives in your menu bar. It tracks every recurring service you pay for,
-warns before renewals, and pulls token / message usage from APIs that expose
-it (Anthropic, OpenAI today). Local SwiftData store, Keychain-backed
+Mia lives in your menu bar. It tracks every recurring service you pay for, warns before renewals, and pulls usage from APIs that expose it (Anthropic, OpenAI today). Local SwiftData store, Keychain-backed
 secrets, no telemetry, no cloud.
 
-```diagram
-╭───────────────────────────────╮
-│  Mia                       ⟳  │
-│  $74.96 / month               │
-├───────────────────────────────┤
-│  💳 Anthropic   Pro    $20/mo │
-│      Reset in 4 days   15/12  │
-│  💳 OpenAI      Tier 2 $50/mo │
-│      Reset in 9 days   01/01  │
-│  💳 Spotify     Family $4.99  │
-├───────────────────────────────┤
-│  +    ⚙          Quit         │
-╰───────────────────────────────╯
-```
+![Mia](screenshot.png)
 
 ## Features
 
