@@ -1,0 +1,101 @@
+// MARK: - Provider template
+//
+// Copy this file to `Mia/Providers/<YourService>Provider.swift`, then:
+//   1. Rename the type, `key`, and `displayName` below.
+//   2. Wire up `fetchPlan()` and/or `fetchUsage()` against the service's API
+//      using `URLSession` + `async/await` (no third-party HTTP clients).
+//   3. Append the new type to `ProviderRegistry.builtIns` (in
+//      `Mia/Providers/ProviderRegistry.swift`).
+//   4. Add an entry to `MiaTests/<YourService>ProviderTests.swift` using
+//      `StubHTTPClient` to assert decoding and error mapping.
+//
+// See `docs/ADDING_A_PROVIDER.md` for the full recipe.
+
+import Foundation
+
+struct TemplateProvider: RegisterableProvider {
+    // Stable lowercase key persisted on `Subscription.providerKey`.
+    static let key = "template"
+    // Human-readable name surfaced in the "Add Subscription" picker.
+    static let displayName = "Template"
+
+    // Set to `true` if your service needs an API key. The key is collected
+    // by `AddSubscriptionView` (SecureField) and stored in Keychain under
+    // `dev.mia.<key>` keyed by the subscription UUID.
+    let requiresCredential = true
+
+    // MARK: Registration
+
+    static var descriptor: ProviderDescriptor {
+        ProviderDescriptor(
+            key: key,
+            displayName: displayName,
+            requiresCredential: true,
+            factory: { secret in TemplateProvider(apiKey: secret ?? "") }
+        )
+    }
+
+    // MARK: Init
+
+    private let apiKey: String
+    private let baseURL: URL
+    private let client: HTTPClient
+    private let now: @Sendable () -> Date
+
+    init(
+        apiKey: String,
+        baseURL: URL = URL(string: "https://api.example.com")!,
+        client: HTTPClient = URLSessionHTTPClient(),
+        now: @escaping @Sendable () -> Date = { .now }
+    ) {
+        self.apiKey = apiKey
+        self.baseURL = baseURL
+        self.client = client
+        self.now = now
+    }
+
+    // MARK: Provider API
+
+    /// Return billing / plan info if the service exposes it. Otherwise return
+    /// `nil` and let the user enter cost manually.
+    func fetchPlan() async throws -> PlanInfo? {
+        nil
+    }
+
+    /// Return a point-in-time usage reading. Throw `ProviderError` on failure;
+    /// never crash, never return `nil` to mask a real error.
+    func fetchUsage() async throws -> UsageInfo? {
+        guard !apiKey.isEmpty else { throw ProviderError.missingCredential }
+
+        var request = URLRequest(url: baseURL.appendingPathComponent("/v1/usage"))
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "accept")
+
+        let (data, response) = try await client.data(for: request)
+        switch response.statusCode {
+        case 200...299: break
+        case 401, 403: throw ProviderError.invalidCredential
+        case 429: throw ProviderError.rateLimited
+        default: throw ProviderError.network("HTTP \(response.statusCode)")
+        }
+
+        struct Payload: Decodable {
+            let used: Double
+            let limit: Double?
+            let unit: String
+        }
+        do {
+            let payload = try JSONDecoder().decode(Payload.self, from: data)
+            return UsageInfo(
+                used: payload.used,
+                limit: payload.limit,
+                unit: payload.unit,
+                capturedAt: now(),
+                rawJSON: String(data: data, encoding: .utf8)
+            )
+        } catch {
+            throw ProviderError.decoding(String(describing: error))
+        }
+    }
+}

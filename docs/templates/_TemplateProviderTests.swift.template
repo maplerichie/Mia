@@ -1,0 +1,51 @@
+// MARK: - Provider test template
+//
+// Copy to `MiaTests/<YourService>ProviderTests.swift`, then:
+//   1. Replace `TemplateProvider` with your provider type.
+//   2. Tailor the JSON in `body` to your real API response.
+//   3. Add cases for the error mappings you care about (401, 429, decode).
+
+import XCTest
+@testable import Mia
+
+final class TemplateProviderTests: XCTestCase {
+    func testFetchUsageDecodes() async throws {
+        let body = """
+        { "used": 1234, "limit": 5000, "unit": "tokens" }
+        """.data(using: .utf8)!
+
+        let stub = StubHTTPClient(outcome: .response(status: 200, body: body))
+        let provider = TemplateProvider(apiKey: "test", client: stub)
+
+        let usage = try await provider.fetchUsage()
+        XCTAssertEqual(usage?.used, 1234)
+        XCTAssertEqual(usage?.limit, 5000)
+        XCTAssertEqual(usage?.unit, "tokens")
+        XCTAssertEqual(stub.lastRequest?.value(forHTTPHeaderField: "Authorization"), "Bearer test")
+    }
+
+    func testMissingCredentialThrows() async {
+        let provider = TemplateProvider(apiKey: "", client: StubHTTPClient(outcome: .response(status: 200, body: Data())))
+        do {
+            _ = try await provider.fetchUsage()
+            XCTFail("expected throw")
+        } catch let error as ProviderError {
+            XCTAssertEqual(error, .missingCredential)
+        } catch {
+            XCTFail("unexpected error: \(error)")
+        }
+    }
+
+    func testInvalidCredentialMaps401() async {
+        let stub = StubHTTPClient(outcome: .response(status: 401, body: Data()))
+        let provider = TemplateProvider(apiKey: "bad", client: stub)
+        do {
+            _ = try await provider.fetchUsage()
+            XCTFail("expected throw")
+        } catch let error as ProviderError {
+            XCTAssertEqual(error, .invalidCredential)
+        } catch {
+            XCTFail("unexpected error: \(error)")
+        }
+    }
+}
