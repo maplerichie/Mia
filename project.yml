@@ -1,6 +1,6 @@
 name: Mia
 options:
-  bundleIdPrefix: dev.mia
+  bundleIdPrefix: com.likkee
   deploymentTarget:
     macOS: "14.0"
   createIntermediateGroups: true
@@ -40,7 +40,7 @@ targets:
         com.apple.security.network.client: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.mia.Mia
+        PRODUCT_BUNDLE_IDENTIFIER: com.likkee.Mia
         GENERATE_INFOPLIST_FILE: NO
         COMBINE_HIDPI_IMAGES: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -55,7 +55,7 @@ targets:
       - target: Mia
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.mia.MiaTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.likkee.MiaTests
         GENERATE_INFOPLIST_FILE: YES
 
 schemes:

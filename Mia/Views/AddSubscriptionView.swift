@@ -337,7 +337,7 @@ struct AddSubscriptionView: View {
         )
 
         if selectedDescriptor?.requiresCredential == true {
-            let service = "dev.mia.\(providerKey)"
+            let service = "com.likkee.\(providerKey)"
             let keychain = KeychainStore(service: service)
             do {
                 try keychain.setSecret(trimmedKey, account: subscription.id.uuidString)
@@ -377,7 +377,7 @@ struct AddSubscriptionView: View {
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespaces)
 
         if needsCredential {
-            let service = "dev.mia.\(providerKey)"
+            let service = "com.likkee.\(providerKey)"
             // Provider switched: clear old credential entry.
             if didChangeProvider, let old = existing.credential {
                 try? KeychainStore(service: old.keychainService).deleteSecret(account: old.keychainAccount)

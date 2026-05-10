@@ -13,7 +13,7 @@ enum KeychainError: Error, Equatable {
 /// `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` so they never sync to iCloud
 /// Keychain or other devices.
 struct KeychainStore: Sendable {
-    /// Service identifier used to namespace items, e.g. `"dev.mia.anthropic"`.
+    /// Service identifier used to namespace items, e.g. `"com.likkee.anthropic"`.
     let service: String
 
     init(service: String) {

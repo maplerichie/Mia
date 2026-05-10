@@ -21,7 +21,7 @@ struct TemplateProvider: RegisterableProvider {
 
     // Set to `true` if your service needs an API key. The key is collected
     // by `AddSubscriptionView` (SecureField) and stored in Keychain under
-    // `dev.mia.<key>` keyed by the subscription UUID.
+    // `com.likkee.<key>` keyed by the subscription UUID.
     let requiresCredential = true
 
     // MARK: Registration

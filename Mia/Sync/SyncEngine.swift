@@ -30,7 +30,7 @@ final class SyncEngine {
     init(
         store: SubscriptionStore,
         registry: ProviderRegistry? = nil,
-        keychainServicePrefix: String = "dev.mia",
+        keychainServicePrefix: String = "com.likkee",
         perProviderTimeout: Duration = .seconds(15)
     ) {
         self.store = store

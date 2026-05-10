@@ -56,7 +56,7 @@ xcodebuild test  -scheme Mia -destination 'platform=macOS'
 
 1. Click **+** to add a subscription. Pick a provider; for API-backed
    providers, paste an API key — it's stored in macOS Keychain under
-   `dev.mia.<providerKey>`, never in the SwiftData store.
+   `com.likkee.<providerKey>`, never in the SwiftData store.
 2. Click **⟳** to refresh, or wait for the launch-time sync.
 3. Tune renewal-day and quota-percent thresholds in **⚙ Settings**.
 

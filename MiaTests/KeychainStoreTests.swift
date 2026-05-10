@@ -3,7 +3,7 @@ import XCTest
 @testable import Mia
 
 final class KeychainStoreTests: XCTestCase {
-    private let service = "dev.mia.tests.\(UUID().uuidString)"
+    private let service = "com.likkee.tests.\(UUID().uuidString)"
     private lazy var store = KeychainStore(service: service)
     private let account = "test-account"
 

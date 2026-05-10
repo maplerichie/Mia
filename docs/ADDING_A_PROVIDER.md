@@ -67,7 +67,7 @@ static let builtIns: [any RegisterableProvider.Type] = [
 | Networking          | `URLSession` + `async/await` only — **no** third-party HTTP clients. Inject `HTTPClient` for tests. |
 | Money               | `Decimal`, never `Double`.                                                                    |
 | Errors              | Throw `ProviderError`. Map upstream `401/403 → .invalidCredential`, `429 → .rateLimited`, decode failures → `.decoding(detail)`, transport → `.network(detail)`. |
-| Secrets             | The framework writes the API key into Keychain (`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`) under service `dev.mia.<key>` keyed by the subscription UUID. The factory closure receives it as `secret`. |
+| Secrets             | The framework writes the API key into Keychain (`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`) under service `com.likkee.<key>` keyed by the subscription UUID. The factory closure receives it as `secret`. |
 | Concurrency         | Provider types are `Sendable`. No mutable shared state. `SyncEngine` calls each provider concurrently in a `TaskGroup` with a per-provider 15s timeout. |
 | Naming              | `key` lowercase (`"anthropic"`); `displayName` as the user reads it (`"Anthropic"`).        |
 | File layout         | One primary type per file, filename matches type. Tests mirror the source path under `MiaTests/`. |
