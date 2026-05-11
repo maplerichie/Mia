@@ -56,10 +56,42 @@ final class SubscriptionStore {
             sortBy: [SortDescriptor(\.nextRenewalDate, order: .forward)]
         )
         do {
-            subscriptions = try modelContext.fetch(descriptor)
+            subscriptions = sortByResetDate(try modelContext.fetch(descriptor))
         } catch {
             assertionFailure("Failed to fetch subscriptions: \(error)")
             subscriptions = []
+        }
+    }
+
+    private func sortByResetDate(_ subscriptions: [Subscription]) -> [Subscription] {
+        let now = Date()
+        let calendar = Calendar.current
+
+        return subscriptions.sorted { lhs, rhs in
+            let lhsReset = lhs.nextQuotaResetDate(now: now).map { calendar.startOfDay(for: $0) }
+            let rhsReset = rhs.nextQuotaResetDate(now: now).map { calendar.startOfDay(for: $0) }
+
+            switch (lhsReset, rhsReset) {
+            case let (lhsReset?, rhsReset?) where lhsReset != rhsReset:
+                return lhsReset < rhsReset
+            case (.some, nil):
+                return true
+            case (nil, .some):
+                return false
+            default:
+                break
+            }
+
+            if lhs.nextRenewalDate != rhs.nextRenewalDate {
+                return lhs.nextRenewalDate < rhs.nextRenewalDate
+            }
+
+            let nameOrder = lhs.name.localizedStandardCompare(rhs.name)
+            if nameOrder != .orderedSame {
+                return nameOrder == .orderedAscending
+            }
+
+            return lhs.id.uuidString < rhs.id.uuidString
         }
     }
 

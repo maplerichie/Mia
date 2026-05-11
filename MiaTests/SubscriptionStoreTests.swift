@@ -57,14 +57,32 @@ final class SubscriptionStoreTests: XCTestCase {
         XCTAssertTrue(store.subscriptions.isEmpty)
     }
 
-    func testSubscriptionsSortedByRenewal() throws {
+    func testSubscriptionsSortedByResetDate() throws {
         let store = try makeStore()
-        let later = Calendar.current.date(byAdding: .day, value: 30, to: .now)!
-        let sooner = Calendar.current.date(byAdding: .day, value: 3, to: .now)!
+        let calendar = Calendar.current
+        let now = Date()
+        let monthlyResetInTenDays = calendar.date(byAdding: .day, value: 10, to: now)!
+        let weeklyRenewalWithResetTomorrow = calendar.date(byAdding: .day, value: 43, to: now)!
+        let noResetCycle = calendar.date(byAdding: .day, value: 1, to: now)!
 
-        store.create(Subscription(name: "Later", cost: 1, nextRenewalDate: later))
-        store.create(Subscription(name: "Sooner", cost: 1, nextRenewalDate: sooner))
+        store.create(Subscription(
+            name: "Monthly Reset",
+            cost: 1,
+            nextRenewalDate: monthlyResetInTenDays,
+            quotaResetCycle: .monthly
+        ))
+        store.create(Subscription(
+            name: "No Reset",
+            cost: 1,
+            nextRenewalDate: noResetCycle
+        ))
+        store.create(Subscription(
+            name: "Weekly Reset",
+            cost: 1,
+            nextRenewalDate: weeklyRenewalWithResetTomorrow,
+            quotaResetCycle: .weekly
+        ))
 
-        XCTAssertEqual(store.subscriptions.map(\.name), ["Sooner", "Later"])
+        XCTAssertEqual(store.subscriptions.map(\.name), ["Weekly Reset", "Monthly Reset", "No Reset"])
     }
 }

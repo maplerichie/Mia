@@ -22,7 +22,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         self.settings = settings
         self.syncEngine = syncEngine
         self.notifications = notifications
-        self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         self.popover = NSPopover()
         super.init()
 
@@ -32,11 +32,13 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 
     private func configureStatusItem() {
         if let button = statusItem.button {
-            button.image = NSImage(
+            let image = NSImage(named: "MenuBarIcon") ?? NSImage(
                 systemSymbolName: "creditcard",
                 accessibilityDescription: "Mia"
             )
-            button.image?.isTemplate = true
+            image?.accessibilityDescription = "Mia"
+            image?.isTemplate = true
+            button.image = image
             button.target = self
             button.action = #selector(togglePopover(_:))
         }
