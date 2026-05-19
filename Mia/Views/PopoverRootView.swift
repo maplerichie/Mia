@@ -26,6 +26,12 @@ struct PopoverRootView: View {
     }
 
     @State private var activeSheet: Sheet?
+    @State private var syncRotation: Double = 0
+    @State private var showSyncCheck: Bool = false
+    @State private var tickTrigger: Int = 0
+    /// `min` and `max` from todo Phase 6.1.
+    private static let minHeight: CGFloat = 200
+    private static let maxHeight: CGFloat = 600
 
     var body: some View {
         VStack(spacing: 0) {
@@ -34,6 +40,7 @@ struct PopoverRootView: View {
             SubscriptionListView(
                 store: store,
                 syncEngine: syncEngine,
+                onAdd: { activeSheet = .add },
                 onEdit: { subscription in
                     activeSheet = .edit(subscription.id)
                 }
@@ -41,9 +48,33 @@ struct PopoverRootView: View {
             Divider()
             footer
         }
-        .frame(width: 360, height: 480)
+        .frame(width: 360)
+        .frame(minHeight: Self.minHeight, idealHeight: idealHeight, maxHeight: Self.maxHeight)
+        .preferredColorScheme(colorScheme)
         .sheet(item: $activeSheet) { sheet in
             sheetContent(for: sheet)
+        }
+        .background(keyboardShortcuts)
+        .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
+            tickTrigger &+= 1
+        }
+    }
+
+    /// Heuristic so a near-empty popover doesn't show a yawning void: ~64pt
+    /// per row + ~140pt chrome (header + footer + padding), clamped to bounds.
+    private var idealHeight: CGFloat {
+        let chrome: CGFloat = 140
+        let rowHeight: CGFloat = 64
+        let count = max(store.subscriptions.count, 1)
+        let ideal = chrome + CGFloat(count) * rowHeight
+        return min(max(ideal, Self.minHeight), Self.maxHeight)
+    }
+
+    private var colorScheme: ColorScheme? {
+        switch settings.appearance {
+        case .system: nil
+        case .light: .light
+        case .dark: .dark
         }
     }
 
@@ -94,19 +125,61 @@ struct PopoverRootView: View {
                 Text("Mia")
                     .font(.headline)
                 Spacer()
+                if let stamp = lastSyncedLabel {
+                    Text(stamp)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .id(tickTrigger) // refresh relative label every minute
+                }
                 Button {
                     Task { await refresh() }
                 } label: {
-                    if syncEngine.isSyncing {
-                        ProgressView().controlSize(.mini)
-                    } else {
-                        Image(systemName: "arrow.clockwise")
+                    ZStack {
+                        if showSyncCheck {
+                            Image(systemName: "checkmark")
+                                .transition(.opacity)
+                        } else if syncEngine.isSyncing {
+                            Image(systemName: "arrow.clockwise")
+                                .rotationEffect(.degrees(syncRotation))
+                                .onAppear {
+                                    withAnimation(.linear(duration: 1).repeatForever(autoreverses: false)) {
+                                        syncRotation = 360
+                                    }
+                                }
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                        }
                     }
                 }
                 .buttonStyle(.borderless)
                 .disabled(syncEngine.isSyncing)
-                .help("Refresh usage")
+                .help("Refresh usage (⌘R)")
+                .keyboardShortcut("r", modifiers: [.command])
             }
+            totalsRow
+        }
+        .padding(12)
+    }
+
+    @ViewBuilder
+    private var totalsRow: some View {
+        if store.hasMixedCurrencies {
+            // Multi-currency: show per-currency subtotals to avoid silently
+            // summing across non-comparable currencies.
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                ForEach(store.monthlyTotalsByCurrency.prefix(3), id: \.currency) { entry in
+                    HStack(spacing: 2) {
+                        Text(entry.total.formatted(.currency(code: entry.currency)))
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                        Text("/mo")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+            }
+        } else {
             HStack(alignment: .firstTextBaseline) {
                 Text(store.monthlyTotal.formatted(.currency(code: store.primaryCurrency)))
                     .font(.title2)
@@ -123,7 +196,15 @@ struct PopoverRootView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(12)
+    }
+
+    private var lastSyncedLabel: String? {
+        guard let date = syncEngine.lastSyncedAt else { return nil }
+        let interval = Date.now.timeIntervalSince(date)
+        if interval < 5 { return "Just synced" }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .short
+        return "Synced " + formatter.localizedString(for: date, relativeTo: .now)
     }
 
     private var footer: some View {
@@ -133,21 +214,45 @@ struct PopoverRootView: View {
             } label: {
                 Label("Add", systemImage: "plus")
             }
+            .keyboardShortcut("n", modifiers: [.command])
             Spacer()
             Button {
                 activeSheet = .settings
             } label: {
                 Label("Settings", systemImage: "gear")
             }
+            .keyboardShortcut(",", modifiers: [.command])
             Button("Quit") {
                 NSApp.terminate(nil)
             }
+            .keyboardShortcut("q", modifiers: [.command])
         }
         .padding(8)
     }
 
+    /// Catch-all shortcut surface in case Buttons are not in the focus
+    /// chain (popover hosts can drop first responder occasionally).
+    @ViewBuilder
+    private var keyboardShortcuts: some View {
+        Group {
+            Button("") { activeSheet = .add }
+                .keyboardShortcut("n", modifiers: [.command])
+            Button("") { Task { await refresh() } }
+                .keyboardShortcut("r", modifiers: [.command])
+            Button("") { activeSheet = .settings }
+                .keyboardShortcut(",", modifiers: [.command])
+        }
+        .opacity(0)
+        .frame(width: 0, height: 0)
+        .allowsHitTesting(false)
+    }
+
     private func refresh() async {
         await syncEngine.syncAll()
+        // Brief checkmark flash on completion.
+        withAnimation(.easeInOut(duration: 0.2)) { showSyncCheck = true }
+        try? await Task.sleep(for: .milliseconds(700))
+        withAnimation(.easeInOut(duration: 0.2)) { showSyncCheck = false }
         await notifications.evaluate(
             subscriptions: store.subscriptions,
             latestUsage: { store.latestUsage(for: $0) },

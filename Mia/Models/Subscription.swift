@@ -23,6 +23,9 @@ final class Subscription {
     var iconAssetName: String?
     var notes: String?
     var createdAt: Date
+    /// Number of months per cycle when `billingCycle == .custom`. Ignored for
+    /// `.monthly` and `.yearly`. Default `1` (behaves like monthly).
+    var customCycleMonths: Int = 1
 
     @Relationship(deleteRule: .cascade, inverse: \UsageSnapshot.subscription)
     var usageSnapshots: [UsageSnapshot] = []
@@ -42,7 +45,8 @@ final class Subscription {
         quotaResetCycle: QuotaResetCycle? = nil,
         iconAssetName: String? = nil,
         notes: String? = nil,
-        createdAt: Date = .now
+        createdAt: Date = .now,
+        customCycleMonths: Int = 1
     ) {
         self.id = id
         self.name = name
@@ -56,6 +60,7 @@ final class Subscription {
         self.iconAssetName = iconAssetName
         self.notes = notes
         self.createdAt = createdAt
+        self.customCycleMonths = customCycleMonths
     }
 }
 
@@ -127,6 +132,39 @@ extension QuotaResetCycle {
 }
 
 extension Subscription {
+    /// Effective months per billing cycle, honoring `customCycleMonths` when
+    /// the cycle is `.custom`. Used to normalize cost into per-month figures
+    /// and to roll `nextRenewalDate` forward.
+    var effectiveMonthsPerCycle: Int {
+        switch billingCycle {
+        case .monthly: return 1
+        case .yearly: return 12
+        case .custom: return max(1, customCycleMonths)
+        }
+    }
+
+    var effectiveMonthsPerCycleDecimal: Decimal {
+        Decimal(effectiveMonthsPerCycle)
+    }
+
+    /// Rolls `nextRenewalDate` forward by full billing cycles until it is in
+    /// the future. Idempotent and safe to call from sync / launch hooks.
+    /// Returns `true` if the date was changed.
+    @discardableResult
+    func advanceRenewalIfNeeded(now: Date = .now, calendar: Calendar = .current) -> Bool {
+        let months = effectiveMonthsPerCycle
+        guard months > 0 else { return false }
+        var changed = false
+        var safety = 0
+        while nextRenewalDate < now, safety < 600 {
+            guard let next = calendar.date(byAdding: .month, value: months, to: nextRenewalDate) else { break }
+            nextRenewalDate = next
+            changed = true
+            safety += 1
+        }
+        return changed
+    }
+
     /// Next quota reset date derived from `nextRenewalDate` and
     /// `quotaResetCycle`. Walks the cycle interval relative to the renewal
     /// anchor until the first reset strictly after `now`. Returns `nil` for

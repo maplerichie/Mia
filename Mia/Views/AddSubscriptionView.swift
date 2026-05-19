@@ -18,6 +18,8 @@ struct AddSubscriptionView: View {
     @State private var nextRenewalDate: Date
     @State private var quotaResetCycle: QuotaResetCycle?
     @State private var notes: String
+    @State private var customCycleMonths: Int
+    @State private var iconAssetName: String
     @State private var apiKey: String = ""
     @State private var keychainError: String?
     @State private var didAttemptSubmit: Bool = false
@@ -42,6 +44,8 @@ struct AddSubscriptionView: View {
             _nextRenewalDate = State(initialValue: sub.nextRenewalDate)
             _quotaResetCycle = State(initialValue: sub.quotaResetCycle)
             _notes = State(initialValue: sub.notes ?? "")
+            _customCycleMonths = State(initialValue: sub.customCycleMonths)
+            _iconAssetName = State(initialValue: sub.iconAssetName ?? "")
         } else {
             _providerKey = State(initialValue: ManualProvider.key)
             _name = State(initialValue: "")
@@ -54,6 +58,8 @@ struct AddSubscriptionView: View {
             )
             _quotaResetCycle = State(initialValue: nil)
             _notes = State(initialValue: "")
+            _customCycleMonths = State(initialValue: 1)
+            _iconAssetName = State(initialValue: "")
         }
     }
 
@@ -94,7 +100,28 @@ struct AddSubscriptionView: View {
                             text: $apiKey
                         )
                         .textContentType(.password)
+                        if let hint = ProviderHints.apiKeyHint(for: providerKey) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "info.circle")
+                                    .foregroundStyle(.secondary)
+                                Text(hint.text)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                if let url = hint.url {
+                                    Link("Open", destination: url)
+                                        .font(.caption)
+                                }
+                            }
+                        }
                         errorRow(apiKeyError)
+                    }
+                    if providerKey == ManualProvider.key {
+                        Picker("Icon", selection: $iconAssetName) {
+                            Text("Default").tag("")
+                            ForEach(ProviderIcons.manualPalette, id: \.key) { entry in
+                                Label(entry.label, systemImage: entry.symbol).tag(entry.key)
+                            }
+                        }
                     }
                 }
 
@@ -134,6 +161,14 @@ struct AddSubscriptionView: View {
                         .labelsHidden()
                     } label: {
                         requiredLabel("Cycle")
+                    }
+
+                    if billingCycle == .custom {
+                        Stepper(
+                            "Every \(customCycleMonths) month\(customCycleMonths == 1 ? "" : "s")",
+                            value: $customCycleMonths,
+                            in: 1...36
+                        )
                     }
 
                     LabeledContent {
@@ -324,6 +359,7 @@ struct AddSubscriptionView: View {
         let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedPlan = plan.trimmingCharacters(in: .whitespaces)
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespaces)
+        let trimmedIcon = iconAssetName.trimmingCharacters(in: .whitespaces)
         let subscription = Subscription(
             name: name,
             providerKey: providerKey,
@@ -333,7 +369,9 @@ struct AddSubscriptionView: View {
             billingCycle: billingCycle,
             nextRenewalDate: nextRenewalDate,
             quotaResetCycle: quotaResetCycle,
-            notes: trimmedNotes.isEmpty ? nil : trimmedNotes
+            iconAssetName: trimmedIcon.isEmpty ? nil : trimmedIcon,
+            notes: trimmedNotes.isEmpty ? nil : trimmedNotes,
+            customCycleMonths: max(1, customCycleMonths)
         )
 
         if selectedDescriptor?.requiresCredential == true {
@@ -360,6 +398,7 @@ struct AddSubscriptionView: View {
 
         let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedPlan = plan.trimmingCharacters(in: .whitespaces)
+        let trimmedIcon = iconAssetName.trimmingCharacters(in: .whitespaces)
         store.update(existing) { sub in
             sub.name = name
             sub.providerKey = providerKey
@@ -370,6 +409,8 @@ struct AddSubscriptionView: View {
             sub.nextRenewalDate = nextRenewalDate
             sub.quotaResetCycle = quotaResetCycle
             sub.notes = trimmedNotes.isEmpty ? nil : trimmedNotes
+            sub.iconAssetName = trimmedIcon.isEmpty ? nil : trimmedIcon
+            sub.customCycleMonths = max(1, customCycleMonths)
         }
 
         // Credential management on edit.

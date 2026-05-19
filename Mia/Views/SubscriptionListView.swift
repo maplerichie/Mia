@@ -3,6 +3,7 @@ import SwiftUI
 struct SubscriptionListView: View {
     @Bindable var store: SubscriptionStore
     @Bindable var syncEngine: SyncEngine
+    let onAdd: () -> Void
     let onEdit: (Subscription) -> Void
 
     var body: some View {
@@ -14,12 +15,23 @@ struct SubscriptionListView: View {
                     SubscriptionRow(
                         subscription: subscription,
                         latestUsage: store.latestUsage(for: subscription),
+                        recentSnapshots: store.recentSnapshots(for: subscription, days: 7),
                         status: syncEngine.statuses[subscription.id] ?? .idle,
                         onEdit: { onEdit(subscription) },
                         onDelete: { store.delete(subscription) }
                     )
                     .contextMenu {
                         Button("Edit", systemImage: "pencil") { onEdit(subscription) }
+                        Button("Sync this one", systemImage: "arrow.clockwise") {
+                            Task { await syncEngine.syncOne(id: subscription.id) }
+                        }
+                        Button("Copy cost", systemImage: "doc.on.doc") {
+                            let s = subscription.cost.formatted(.currency(code: subscription.currency))
+                            let pb = NSPasteboard.general
+                            pb.clearContents()
+                            pb.setString(s, forType: .string)
+                        }
+                        Divider()
                         Button(role: .destructive) {
                             store.delete(subscription)
                         } label: {
@@ -33,24 +45,33 @@ struct SubscriptionListView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "tray")
-                .font(.system(size: 28))
+        VStack(spacing: 12) {
+            Image(systemName: "creditcard.and.123")
+                .font(.system(size: 36, weight: .light))
                 .foregroundStyle(.tertiary)
-            Text("No subscriptions yet")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            Text("Click + to add one.")
+            Text("Track your first subscription")
+                .font(.headline)
+            Text("Stay on top of renewals and API usage — all stored locally.")
                 .font(.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+            Button(action: onAdd) {
+                Label("Add Subscription", systemImage: "plus")
+            }
+            .controlSize(.regular)
+            .keyboardShortcut("n", modifiers: [.command])
+            .padding(.top, 4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.vertical, 24)
     }
 }
 
 private struct SubscriptionRow: View {
     let subscription: Subscription
     let latestUsage: UsageSnapshot?
+    let recentSnapshots: [UsageSnapshot]
     let status: SyncStatus
     let onEdit: () -> Void
     let onDelete: () -> Void
@@ -58,9 +79,17 @@ private struct SubscriptionRow: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
-            Image(systemName: "creditcard.fill")
-                .foregroundStyle(.white)
+            ZStack {
+                healthDot
+                    .frame(width: 8, height: 8)
+                    .offset(x: 9, y: -9)
+                Image(systemName: ProviderIcons.symbol(
+                    providerKey: subscription.providerKey,
+                    iconAssetName: subscription.iconAssetName
+                ))
+                .foregroundStyle(.primary)
                 .frame(width: 22)
+            }
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
@@ -88,6 +117,11 @@ private struct SubscriptionRow: View {
                 if let usage = latestUsage {
                     UsageBar(snapshot: usage, resetCycle: subscription.quotaResetCycle)
                 }
+                if recentSnapshots.count >= 2 {
+                    Sparkline(snapshots: recentSnapshots)
+                        .frame(height: 12)
+                        .padding(.top, 2)
+                }
             }
 
             Button(action: onEdit) {
@@ -110,10 +144,22 @@ private struct SubscriptionRow: View {
     }
 
     private var renewalDateLabel: String {
-        subscription.nextRenewalDate.formatted(
-            .dateTime.day(.twoDigits).month(.twoDigits).year()
-                .locale(Locale(identifier: "en_GB"))
-        )
+        let days = daysToRenewal
+        switch days {
+        case ..<0:
+            return "Overdue"
+        case 0:
+            return "Renews today"
+        case 1:
+            return "Renews tomorrow"
+        case 2...7:
+            return "Renews in \(days) days"
+        default:
+            return subscription.nextRenewalDate.formatted(
+                .dateTime.day(.twoDigits).month(.twoDigits).year()
+                    .locale(Locale(identifier: "en_GB"))
+            )
+        }
     }
 
     private var resetLabel: String {
@@ -143,6 +189,19 @@ private struct SubscriptionRow: View {
         }
     }
 
+    /// Persistent provider-health dot anchored to the icon.
+    @ViewBuilder
+    private var healthDot: some View {
+        switch status {
+        case .success:
+            Circle().fill(.green).opacity(0.9)
+        case .failure:
+            Circle().fill(.red).opacity(0.9)
+        case .syncing, .idle:
+            Circle().fill(.clear)
+        }
+    }
+
     private var daysToRenewal: Int {
         let cal = Calendar.current
         return cal.dateComponents(
@@ -155,7 +214,9 @@ private struct SubscriptionRow: View {
     private var renewalColor: Color {
         switch daysToRenewal {
         case ..<0: .red
-        case 0...2: .orange
+        case 0: .red
+        case 1...2: .orange
+        case 3...7: .yellow
         default: .secondary
         }
     }
@@ -207,5 +268,34 @@ private struct UsageBar: View {
 
     private func format(_ value: Double) -> String {
         value.formatted(.number.notation(.compactName).precision(.fractionLength(0...1)))
+    }
+}
+
+/// Tiny 7-day usage trend line. Pure SwiftUI `Path` — no charting deps.
+private struct Sparkline: View {
+    let snapshots: [UsageSnapshot]
+
+    var body: some View {
+        GeometryReader { geo in
+            let values = snapshots.map(\.used)
+            let minV = values.min() ?? 0
+            let maxV = values.max() ?? 1
+            let range = max(maxV - minV, 0.0001)
+            let stepX = values.count > 1 ? geo.size.width / CGFloat(values.count - 1) : 0
+            Path { path in
+                for (idx, value) in values.enumerated() {
+                    let normalized = (value - minV) / range
+                    let x = CGFloat(idx) * stepX
+                    let y = geo.size.height * (1 - CGFloat(normalized))
+                    if idx == 0 {
+                        path.move(to: CGPoint(x: x, y: y))
+                    } else {
+                        path.addLine(to: CGPoint(x: x, y: y))
+                    }
+                }
+            }
+            .stroke(Color.accentColor.opacity(0.7), lineWidth: 1)
+        }
+        .help("7-day usage trend")
     }
 }

@@ -40,13 +40,16 @@ final class SyncEngine {
     }
 
     /// Refresh every subscription concurrently. Persists a `UsageSnapshot`
-    /// for each provider that returns one.
+    /// for each provider that returns one. Also performs incidental hygiene:
+    /// rolls past renewal dates forward and prunes stale snapshots.
     func syncAll() async {
         guard !isSyncing else { return }
         isSyncing = true
         defer {
             isSyncing = false
             lastSyncedAt = .now
+            store.pruneOldSnapshots()
+            store.advancePastRenewals()
         }
 
         let work = store.subscriptions.map { (id: $0.id, providerKey: $0.providerKey) }
@@ -83,6 +86,22 @@ final class SyncEngine {
         for (id, result) in results {
             apply(result: result, toSubscriptionID: id)
         }
+    }
+
+    /// Refresh a single subscription. Used by the row context menu.
+    func syncOne(id: UUID) async {
+        guard let subscription = store.subscriptions.first(where: { $0.id == id }) else { return }
+        statuses[id] = .syncing
+        let provider = makeProvider(forSubscriptionID: id, providerKey: subscription.providerKey)
+        guard let provider else {
+            statuses[id] = .failure(message: "Provider unavailable")
+            return
+        }
+        let result = await Self.runWithTimeout(perProviderTimeout, id: id) {
+            try await provider.fetchUsage()
+        }
+        apply(result: result.1, toSubscriptionID: id)
+        lastSyncedAt = .now
     }
 
     // MARK: - Internals

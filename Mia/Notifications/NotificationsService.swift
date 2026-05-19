@@ -51,9 +51,12 @@ final class NotificationsService {
     /// configured thresholds are crossed and the per-day debounce permits it.
     func evaluate(subscriptions: [Subscription], latestUsage: (Subscription) -> UsageSnapshot?, settings: AppSettings) async {
         guard authorizationStatus == .authorized || authorizationStatus == .provisional else { return }
+        guard settings.notificationsEnabled else { return }
         for subscription in subscriptions {
-            await maybeFireRenewal(for: subscription, settings: settings)
-            if let snapshot = latestUsage(subscription) {
+            if settings.renewalAlertsEnabled {
+                await maybeFireRenewal(for: subscription, settings: settings)
+            }
+            if settings.quotaAlertsEnabled, let snapshot = latestUsage(subscription) {
                 await maybeFireQuota(for: subscription, snapshot: snapshot, settings: settings)
             }
         }

@@ -7,6 +7,10 @@ import SwiftData
 @Observable
 @MainActor
 final class SubscriptionStore {
+    /// Snapshots older than this are pruned on each sync cycle to keep the
+    /// SwiftData store bounded.
+    static let snapshotRetentionDays: Int = 90
+
     private let modelContext: ModelContext
 
     private(set) var subscriptions: [Subscription] = []
@@ -49,6 +53,49 @@ final class SubscriptionStore {
     /// Most recent `UsageSnapshot` for a given subscription, if any.
     func latestUsage(for subscription: Subscription) -> UsageSnapshot? {
         subscription.usageSnapshots.max(by: { $0.capturedAt < $1.capturedAt })
+    }
+
+    /// Returns the last `days` of snapshots for the given subscription,
+    /// sorted from oldest to newest. Used by the sparkline.
+    func recentSnapshots(for subscription: Subscription, days: Int = 7) -> [UsageSnapshot] {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: .now) ?? .distantPast
+        return subscription.usageSnapshots
+            .filter { $0.capturedAt >= cutoff }
+            .sorted { $0.capturedAt < $1.capturedAt }
+    }
+
+    /// Auto-roll any past `nextRenewalDate` forward by full billing cycles.
+    /// Safe to call from sync and app-launch hooks.
+    func advancePastRenewals(now: Date = .now) {
+        var changed = false
+        for sub in subscriptions where sub.advanceRenewalIfNeeded(now: now) {
+            changed = true
+        }
+        if changed {
+            save()
+            reload()
+        }
+    }
+
+    /// Prune `UsageSnapshot` rows older than `Self.snapshotRetentionDays`.
+    /// Silent on errors — pruning is a hygiene task, never user-visible.
+    func pruneOldSnapshots(now: Date = .now) {
+        guard let cutoff = Calendar.current.date(byAdding: .day, value: -Self.snapshotRetentionDays, to: now) else {
+            return
+        }
+        let descriptor = FetchDescriptor<UsageSnapshot>(
+            predicate: #Predicate { $0.capturedAt < cutoff }
+        )
+        do {
+            let stale = try modelContext.fetch(descriptor)
+            guard !stale.isEmpty else { return }
+            for snapshot in stale {
+                modelContext.delete(snapshot)
+            }
+            save()
+        } catch {
+            // Non-fatal hygiene task.
+        }
     }
 
     func reload() {
@@ -97,11 +144,15 @@ final class SubscriptionStore {
 
     // MARK: Aggregates
 
-    /// Total normalized monthly spend across all tracked subscriptions.
-    /// Yearly subscriptions are divided by 12; custom cycles count once.
+    /// Total normalized monthly spend across all tracked subscriptions, in
+    /// the auto-detected primary currency. Subscriptions in other currencies
+    /// are excluded — see `monthlyTotalsByCurrency` for the safe multi-currency
+    /// view.
     var monthlyTotal: Decimal {
-        subscriptions.reduce(Decimal.zero) { acc, sub in
-            acc + (sub.cost / sub.billingCycle.monthsPerCycle)
+        let target = primaryCurrency
+        return subscriptions.reduce(Decimal.zero) { acc, sub in
+            guard sub.currency == target else { return acc }
+            return acc + (sub.cost / sub.effectiveMonthsPerCycleDecimal)
         }
     }
 
@@ -109,9 +160,30 @@ final class SubscriptionStore {
         monthlyTotal * 12
     }
 
-    /// Currency used for the aggregate totals. v1 picks the most common
-    /// currency present; mixed-currency portfolios are an explicit non-goal.
+    /// Normalized monthly spend bucketed by currency. Ensures we never silently
+    /// produce a wrong total by summing across e.g. USD and EUR.
+    var monthlyTotalsByCurrency: [(currency: String, total: Decimal)] {
+        var totals: [String: Decimal] = [:]
+        for sub in subscriptions {
+            totals[sub.currency, default: .zero] += sub.cost / sub.effectiveMonthsPerCycleDecimal
+        }
+        return totals
+            .map { (currency: $0.key, total: $0.value) }
+            .sorted { $0.total > $1.total }
+    }
+
+    /// `true` when subscriptions use more than one ISO-4217 currency code.
+    var hasMixedCurrencies: Bool {
+        Set(subscriptions.map(\.currency)).count > 1
+    }
+
+    /// Currency used for the aggregate totals. Honors the user's explicit
+    /// override (Settings → Display); otherwise auto-detects the most common
+    /// currency present. Mixed-currency portfolios are surfaced separately via
+    /// `monthlyTotalsByCurrency` and `hasMixedCurrencies`.
     var primaryCurrency: String {
+        let override = AppSettings.shared.primaryCurrencyOverride
+        if !override.isEmpty { return override }
         let counts = subscriptions.reduce(into: [String: Int]()) { acc, sub in
             acc[sub.currency, default: 0] += 1
         }

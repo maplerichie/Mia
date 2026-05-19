@@ -22,7 +22,9 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         self.settings = settings
         self.syncEngine = syncEngine
         self.notifications = notifications
-        self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        // `variableLength` lets us grow/shrink when the optional $XX badge
+        // toggles in Settings.
+        self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         self.popover = NSPopover()
         super.init()
 
@@ -39,9 +41,35 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             image?.accessibilityDescription = "Mia"
             image?.isTemplate = true
             button.image = image
+            button.imagePosition = .imageLeft
             button.target = self
             button.action = #selector(togglePopover(_:))
         }
+        refreshMenuBarTitle()
+    }
+
+    /// Recompute the optional `$XX` badge from current settings + store totals.
+    /// Cheap; called from the sync timer and after the user toggles the
+    /// Settings switch.
+    func refreshMenuBarTitle() {
+        guard let button = statusItem.button else { return }
+        if settings.showMenuBarTotal, !store.subscriptions.isEmpty {
+            let total = store.monthlyTotal
+            // Compact integer rendering — keep the menu bar narrow.
+            let rounded = NSDecimalNumber(decimal: total).intValue
+            let symbol = Locale.current.localizedString(forCurrencyCode: store.primaryCurrency) ?? store.primaryCurrency
+            let glyph = currencyGlyph(for: store.primaryCurrency) ?? symbol
+            button.title = " \(glyph)\(rounded)"
+        } else {
+            button.title = ""
+        }
+    }
+
+    private func currencyGlyph(for code: String) -> String? {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = code
+        return formatter.currencySymbol
     }
 
     private func configurePopover() {
@@ -75,6 +103,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     private func showPopover() {
         guard let button = statusItem.button else { return }
         store.reload()
+        refreshMenuBarTitle()
 
         // For `LSUIElement` (menu-bar-only) apps, the process is not active by
         // default. Without activating, the popover's window can't become key
@@ -93,5 +122,6 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 
     func popoverDidClose(_ notification: Notification) {
         statusItem.button?.highlight(false)
+        refreshMenuBarTitle()
     }
 }

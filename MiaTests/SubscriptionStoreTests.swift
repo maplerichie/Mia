@@ -85,4 +85,59 @@ final class SubscriptionStoreTests: XCTestCase {
 
         XCTAssertEqual(store.subscriptions.map(\.name), ["Weekly Reset", "Monthly Reset", "No Reset"])
     }
+
+    func testAdvancePastRenewalsRollsForward() throws {
+        let store = try makeStore()
+        let cal = Calendar.current
+        let twoMonthsAgo = cal.date(byAdding: .month, value: -2, to: .now)!
+        store.create(Subscription(
+            name: "Stale",
+            cost: 5,
+            billingCycle: .monthly,
+            nextRenewalDate: twoMonthsAgo
+        ))
+        store.advancePastRenewals()
+        let rolled = store.subscriptions.first!
+        XCTAssertGreaterThan(rolled.nextRenewalDate, .now)
+    }
+
+    func testPruneOldSnapshotsDropsStaleRows() throws {
+        let store = try makeStore()
+        let sub = Subscription(name: "Tracked", cost: 5, nextRenewalDate: .now)
+        store.create(sub)
+        let fresh = UsageSnapshot(capturedAt: .now, used: 1, unit: "calls")
+        let stale = UsageSnapshot(
+            capturedAt: Calendar.current.date(byAdding: .day, value: -120, to: .now)!,
+            used: 1,
+            unit: "calls"
+        )
+        store.appendUsageSnapshot(fresh, to: sub)
+        store.appendUsageSnapshot(stale, to: sub)
+        XCTAssertEqual(sub.usageSnapshots.count, 2)
+        store.pruneOldSnapshots()
+        XCTAssertEqual(sub.usageSnapshots.count, 1)
+    }
+
+    func testMonthlyTotalsByCurrencyBucketsSeparately() throws {
+        let store = try makeStore()
+        store.create(Subscription(name: "USD Plan", cost: 10, currency: "USD", nextRenewalDate: .now))
+        store.create(Subscription(name: "EUR Plan", cost: 8, currency: "EUR", nextRenewalDate: .now))
+        XCTAssertTrue(store.hasMixedCurrencies)
+        let totals = Dictionary(uniqueKeysWithValues: store.monthlyTotalsByCurrency.map { ($0.currency, $0.total) })
+        XCTAssertEqual(totals["USD"], 10)
+        XCTAssertEqual(totals["EUR"], 8)
+    }
+
+    func testCustomCycleMonthsNormalizesMonthlyCost() throws {
+        let store = try makeStore()
+        store.create(Subscription(
+            name: "Quarterly",
+            cost: 30,
+            billingCycle: .custom,
+            nextRenewalDate: .now,
+            customCycleMonths: 3
+        ))
+        // 30 / 3 = 10
+        XCTAssertEqual(store.monthlyTotal, Decimal(10))
+    }
 }
