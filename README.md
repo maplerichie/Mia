@@ -20,6 +20,19 @@ secrets, no telemetry, no cloud.
 - Parallel sync (`TaskGroup` + per-provider timeout).
 - Launch-at-login via `SMAppService`.
 
+## Install
+
+### Requirements
+- macOS 14+ (Sonoma)
+
+### GitHub Releases
+Download: <https://github.com/maplerichie/Mia/releaseso>
+
+### Homebrew
+```bash
+brew install --cask maplerichie/tap/mia
+```
+
 ## Build
 
 Requires Xcode 15+ and macOS 14+.
