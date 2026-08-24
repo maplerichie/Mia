@@ -1,0 +1,5 @@
+--swiftversion 5.10
+--indent 4
+--commas inline
+--exclude Mia.xcodeproj,DerivedData,build,.build,docs
+--disable wrapMultilineStatementBraces,hoistPatternLet

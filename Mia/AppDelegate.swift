@@ -1,4 +1,5 @@
 import AppKit
+import os.log
 import SwiftData
 import SwiftUI
 
@@ -8,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var modelContainer: ModelContainer?
     private var syncTimer: Timer?
     private var settingsObservationTask: Task<Void, Never>?
+    private let logger = Logger(subsystem: "com.likkee.mia", category: "AppDelegate")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let container: ModelContainer
@@ -16,7 +18,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 for: Subscription.self, UsageSnapshot.self, ProviderCredential.self
             )
         } catch {
-            assertionFailure("Failed to create SwiftData ModelContainer: \(error)")
+            logger.error("Failed to create SwiftData ModelContainer: \(error.localizedDescription)")
+            NSApp.terminate(nil)
             return
         }
         self.modelContainer = container

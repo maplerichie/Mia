@@ -6,26 +6,34 @@ struct ProviderDescriptor: Identifiable, Hashable, Sendable {
     let key: String
     let displayName: String
     let requiresCredential: Bool
-    /// Build a configured provider. `secret` is non-nil iff
-    /// `requiresCredential == true` and a Keychain entry was found.
-    private let factory: @Sendable (_ secret: String?) -> any SubscriptionProvider
+    /// Where the credential is expected to come from. Defaults to `.manual`
+    /// (user-pasted API key stored in Mia's Keychain) for API-backed providers.
+    let credentialSource: CredentialSource
+    /// Build a configured provider. `credential` is non-nil iff the resolved
+    /// credential source returned a value; it includes both the secret value
+    /// and an optional account identity for providers that need both.
+    private let factory: @Sendable (_ credential: ResolvedCredential?) -> any SubscriptionProvider
 
-    var id: String { key }
+    var id: String {
+        key
+    }
 
     init(
         key: String,
         displayName: String,
         requiresCredential: Bool,
-        factory: @escaping @Sendable (_ secret: String?) -> any SubscriptionProvider
+        credentialSource: CredentialSource = .manual,
+        factory: @escaping @Sendable (_ credential: ResolvedCredential?) -> any SubscriptionProvider
     ) {
         self.key = key
         self.displayName = displayName
         self.requiresCredential = requiresCredential
+        self.credentialSource = credentialSource
         self.factory = factory
     }
 
-    func makeProvider(secret: String? = nil) -> any SubscriptionProvider {
-        factory(secret)
+    func makeProvider(credential: ResolvedCredential? = nil) -> any SubscriptionProvider {
+        factory(credential)
     }
 
     static func == (lhs: ProviderDescriptor, rhs: ProviderDescriptor) -> Bool {
@@ -57,12 +65,12 @@ final class ProviderRegistry {
         descriptors.first { $0.key == key }
     }
 
-    func provider(forKey key: String, secret: String? = nil) -> (any SubscriptionProvider)? {
-        descriptor(forKey: key)?.makeProvider(secret: secret)
+    func provider(forKey key: String, credential: ResolvedCredential? = nil) -> (any SubscriptionProvider)? {
+        descriptor(forKey: key)?.makeProvider(credential: credential)
     }
 
     /// Wipes the registry. Test-only.
-    func _reset() {
+    func resetRegistry() {
         descriptors.removeAll()
     }
 }
@@ -77,8 +85,54 @@ extension ProviderRegistry {
     /// See `docs/ADDING_A_PROVIDER.md` for the full recipe and template.
     static let builtIns: [any RegisterableProvider.Type] = [
         ManualProvider.self,
+        AbacusAIProvider.self,
+        AlibabaCodingPlanProvider.self,
+        AlibabaTokenPlanProvider.self,
         AnthropicProvider.self,
-        OpenAIProvider.self
+        AWSBedrockProvider.self,
+        DroidFactoryProvider.self,
+        ChutesProvider.self,
+        ClawRouterProvider.self,
+        CodebuffProvider.self,
+        CodexProvider.self,
+        ClaudeProvider.self,
+        CommandCodeProvider.self,
+        CrofProvider.self,
+        CrossModelProvider.self,
+        CursorProvider.self,
+        DeepSeekProvider.self,
+        DeepgramProvider.self,
+        DevinProvider.self,
+        DoubaoProvider.self,
+        ElevenLabsProvider.self,
+        GroqCloudProvider.self,
+        JetBrainsAIProvider.self,
+        KimiK2Provider.self,
+        KiloProvider.self,
+        LLMProxyProvider.self,
+        ManusProvider.self,
+        OpenCodeProvider.self,
+        OpenCodeGoProvider.self,
+        MiniMaxProvider.self,
+        MistralProvider.self,
+        MoonshotProvider.self,
+        OllamaProvider.self,
+        OpenAIProvider.self,
+        OpenRouterProvider.self,
+        PerplexityProvider.self,
+        PoeProvider.self,
+        QoderProvider.self,
+        SakanaAIProvider.self,
+        StepFunProvider.self,
+        SyntheticProvider.self,
+        T3ChatProvider.self,
+        VeniceProvider.self,
+        WarpProvider.self,
+        WayfinderProvider.self,
+        WindsurfProvider.self,
+        XiaomiMiMoProvider.self,
+        ZaiProvider.self,
+        ZedProvider.self
     ]
 
     /// Registers every type listed in `builtIns`. Called once from

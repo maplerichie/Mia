@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import os.log
 import SwiftData
 
 /// Owns the SwiftData `ModelContext` and exposes typed CRUD over `Subscription`.
@@ -10,6 +11,8 @@ final class SubscriptionStore {
     /// Snapshots older than this are pruned on each sync cycle to keep the
     /// SwiftData store bounded.
     static let snapshotRetentionDays: Int = 90
+
+    private static let logger = Logger(subsystem: "com.likkee.mia", category: "SubscriptionStore")
 
     private let modelContext: ModelContext
 
@@ -105,7 +108,7 @@ final class SubscriptionStore {
         do {
             subscriptions = sortByResetDate(try modelContext.fetch(descriptor))
         } catch {
-            assertionFailure("Failed to fetch subscriptions: \(error)")
+            Self.logger.error("Failed to fetch subscriptions: \(error.localizedDescription)")
             subscriptions = []
         }
     }
@@ -197,7 +200,7 @@ final class SubscriptionStore {
         do {
             try modelContext.save()
         } catch {
-            assertionFailure("Failed to save SwiftData context: \(error)")
+            Self.logger.error("Failed to save SwiftData context: \(error.localizedDescription)")
         }
     }
 }

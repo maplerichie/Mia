@@ -1,5 +1,5 @@
-import XCTest
 @testable import Mia
+import XCTest
 
 final class AnthropicProviderTests: XCTestCase {
     func testFetchUsageSumsTokens() async throws {
@@ -85,9 +85,26 @@ final class AnthropicProviderTests: XCTestCase {
         }
     }
 
-    func testCurrentMonthRangeCoversFullMonth() {
+    func testMalformedResponseThrowsDecoding() async {
+        let body = Data("not json".utf8)
+        let stub = StubHTTPClient(outcome: .response(status: 200, body: body))
+        let provider = AnthropicProvider(apiKey: "key", client: stub)
+
+        do {
+            _ = try await provider.fetchUsage()
+            XCTFail("expected throw")
+        } catch let error as ProviderError {
+            if case .decoding = error {} else {
+                XCTFail("expected decoding error, got \(error)")
+            }
+        } catch {
+            XCTFail("unexpected error: \(error)")
+        }
+    }
+
+    func testCurrentMonthRangeCoversFullMonth() throws {
         let comps = DateComponents(year: 2026, month: 5, day: 7, hour: 12)
-        let reference = Calendar.iso8601UTC.date(from: comps)!
+        let reference = try XCTUnwrap(Calendar.iso8601UTC.date(from: comps))
         let (start, end) = AnthropicProvider.currentMonthRange(reference: reference)
         let startComps = Calendar.iso8601UTC.dateComponents([.year, .month, .day], from: start)
         let endComps = Calendar.iso8601UTC.dateComponents([.year, .month, .day], from: end)

@@ -6,26 +6,12 @@ struct PopoverRootView: View {
     @Bindable var settings: AppSettings
     @Bindable var syncEngine: SyncEngine
     @Bindable var notifications: NotificationsService
+    @Bindable var popoverState: PopoverState
 
-    /// SwiftUI only supports one active sheet per view; we drive every
-    /// presentation through a single `.sheet(item:)` to avoid the
-    /// "Currently, only presenting a single sheet is supported" runtime
-    /// warning that fires during app-switch re-evaluation.
-    private enum Sheet: Identifiable {
-        case add
-        case settings
-        case edit(UUID)
-
-        var id: String {
-            switch self {
-            case .add: "add"
-            case .settings: "settings"
-            case .edit(let id): "edit-\(id.uuidString)"
-            }
-        }
-    }
-
-    @State private var activeSheet: Sheet?
+    /// SwiftUI only supports one active sheet per view; the shared
+    /// `PopoverState` drives every presentation through a single
+    /// `.sheet(item:)` to avoid the "only one sheet supported" runtime
+    /// warning. AppKit status-bar menu items also write into this state.
     @State private var syncRotation: Double = 0
     @State private var showSyncCheck: Bool = false
     @State private var tickTrigger: Int = 0
@@ -40,9 +26,9 @@ struct PopoverRootView: View {
             SubscriptionListView(
                 store: store,
                 syncEngine: syncEngine,
-                onAdd: { activeSheet = .add },
+                onAdd: { popoverState.activeSheet = .add },
                 onEdit: { subscription in
-                    activeSheet = .edit(subscription.id)
+                    popoverState.activeSheet = .edit(subscription.id)
                 }
             )
             Divider()
@@ -51,10 +37,15 @@ struct PopoverRootView: View {
         .frame(width: 360)
         .frame(minHeight: Self.minHeight, idealHeight: idealHeight, maxHeight: Self.maxHeight)
         .preferredColorScheme(colorScheme)
-        .sheet(item: $activeSheet) { sheet in
+        .sheet(item: $popoverState.activeSheet) { sheet in
             sheetContent(for: sheet)
         }
         .background(keyboardShortcuts)
+        .onAppear {
+            if !settings.hasSeenWelcome, store.subscriptions.isEmpty, popoverState.activeSheet == nil {
+                popoverState.activeSheet = .welcome
+            }
+        }
         .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
             tickTrigger &+= 1
         }
@@ -79,7 +70,7 @@ struct PopoverRootView: View {
     }
 
     @ViewBuilder
-    private func sheetContent(for sheet: Sheet) -> some View {
+    private func sheetContent(for sheet: PopoverSheet) -> some View {
         switch sheet {
         case .add:
             AddSubscriptionView(
@@ -104,8 +95,19 @@ struct PopoverRootView: View {
                 // dismiss immediately.
                 Color.clear
                     .frame(width: 1, height: 1)
-                    .onAppear { activeSheet = nil }
+                    .onAppear { popoverState.activeSheet = nil }
             }
+        case .welcome:
+            WelcomeView(
+                onAdd: {
+                    settings.hasSeenWelcome = true
+                    popoverState.activeSheet = .add
+                },
+                onDismiss: {
+                    settings.hasSeenWelcome = true
+                    popoverState.activeSheet = nil
+                }
+            )
         }
     }
 
@@ -114,8 +116,8 @@ struct PopoverRootView: View {
     /// can drive any of the three flows.
     private var dismissBinding: Binding<Bool> {
         Binding(
-            get: { activeSheet != nil },
-            set: { if !$0 { activeSheet = nil } }
+            get: { popoverState.activeSheet != nil },
+            set: { if !$0 { popoverState.activeSheet = nil } }
         )
     }
 
@@ -125,7 +127,11 @@ struct PopoverRootView: View {
                 Text("Mia")
                     .font(.headline)
                 Spacer()
-                if let stamp = lastSyncedLabel {
+                if syncEngine.isSyncing {
+                    Text("Syncing…")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                } else if let stamp = lastSyncedLabel {
                     Text(stamp)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -208,26 +214,41 @@ struct PopoverRootView: View {
     }
 
     private var footer: some View {
-        HStack {
+        HStack(spacing: 12) {
             Button {
-                activeSheet = .add
+                popoverState.activeSheet = .add
             } label: {
-                Label("Add", systemImage: "plus")
+                Image(systemName: "plus")
+                    .font(.system(size: 13, weight: .medium))
             }
+            .buttonStyle(.borderless)
+            .help("Add subscription (⌘N)")
             .keyboardShortcut("n", modifiers: [.command])
-            Spacer()
+
             Button {
-                activeSheet = .settings
+                popoverState.activeSheet = .settings
             } label: {
-                Label("Settings", systemImage: "gear")
+                Image(systemName: "gear")
+                    .font(.system(size: 13, weight: .medium))
             }
+            .buttonStyle(.borderless)
+            .help("Settings (⌘,)")
             .keyboardShortcut(",", modifiers: [.command])
-            Button("Quit") {
+
+            Spacer()
+
+            Button {
                 NSApp.terminate(nil)
+            } label: {
+                Image(systemName: "power")
+                    .font(.system(size: 13, weight: .medium))
             }
+            .buttonStyle(.borderless)
+            .help("Quit Mia (⌘Q)")
             .keyboardShortcut("q", modifiers: [.command])
         }
-        .padding(8)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 
     /// Catch-all shortcut surface in case Buttons are not in the focus
@@ -235,11 +256,11 @@ struct PopoverRootView: View {
     @ViewBuilder
     private var keyboardShortcuts: some View {
         Group {
-            Button("") { activeSheet = .add }
+            Button("") { popoverState.activeSheet = .add }
                 .keyboardShortcut("n", modifiers: [.command])
             Button("") { Task { await refresh() } }
                 .keyboardShortcut("r", modifiers: [.command])
-            Button("") { activeSheet = .settings }
+            Button("") { popoverState.activeSheet = .settings }
                 .keyboardShortcut(",", modifiers: [.command])
         }
         .opacity(0)

@@ -48,4 +48,47 @@ final class OpenAIProviderTests: XCTestCase {
             XCTFail("unexpected error: \(error)")
         }
     }
+
+    func testInvalidCredentialMaps401() async {
+        let stub = StubHTTPClient(outcome: .response(status: 401, body: Data()))
+        let provider = OpenAIProvider(apiKey: "bad", client: stub)
+        do {
+            _ = try await provider.fetchUsage()
+            XCTFail("expected throw")
+        } catch let error as ProviderError {
+            XCTAssertEqual(error, .invalidCredential)
+        } catch {
+            XCTFail("unexpected error: \(error)")
+        }
+    }
+
+    func testRateLimitedMaps429() async {
+        let stub = StubHTTPClient(outcome: .response(status: 429, body: Data()))
+        let provider = OpenAIProvider(apiKey: "key", client: stub)
+        do {
+            _ = try await provider.fetchUsage()
+            XCTFail("expected throw")
+        } catch let error as ProviderError {
+            XCTAssertEqual(error, .rateLimited)
+        } catch {
+            XCTFail("unexpected error: \(error)")
+        }
+    }
+
+    func testMalformedResponseThrowsDecoding() async {
+        let body = Data("not json".utf8)
+        let stub = StubHTTPClient(outcome: .response(status: 200, body: body))
+        let provider = OpenAIProvider(apiKey: "key", client: stub)
+
+        do {
+            _ = try await provider.fetchUsage()
+            XCTFail("expected throw")
+        } catch let error as ProviderError {
+            if case .decoding = error {} else {
+                XCTFail("expected decoding error, got \(error)")
+            }
+        } catch {
+            XCTFail("unexpected error: \(error)")
+        }
+    }
 }

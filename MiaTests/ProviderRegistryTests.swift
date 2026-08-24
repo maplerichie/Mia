@@ -4,7 +4,7 @@ import XCTest
 @MainActor
 final class ProviderRegistryTests: XCTestCase {
     override func setUp() async throws {
-        ProviderRegistry.shared._reset()
+        ProviderRegistry.shared.resetRegistry()
     }
 
     func testRegisterBuiltInsIncludesManual() {
@@ -13,6 +13,56 @@ final class ProviderRegistryTests: XCTestCase {
         XCTAssertNotNil(descriptor)
         XCTAssertEqual(descriptor?.displayName, "Manual")
         XCTAssertFalse(descriptor?.requiresCredential ?? true)
+    }
+
+    func testRegisterBuiltInsIncludesLocalSourceProviders() {
+        ProviderRegistry.shared.registerBuiltInProviders()
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: CodexProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: ClaudeProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: CursorProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: ZedProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: CodebuffProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: OpenRouterProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: PerplexityProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: DeepSeekProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: ElevenLabsProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: GroqCloudProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: MistralProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: MoonshotProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: PoeProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: KimiK2Provider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: VeniceProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: CrofProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: WarpProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: T3ChatProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: OllamaProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: ManusProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: DevinProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: MiniMaxProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: CommandCodeProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: QoderProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: SakanaAIProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: AbacusAIProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: XiaomiMiMoProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: ChutesProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: CrossModelProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: ClawRouterProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: LLMProxyProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: SyntheticProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: ZaiProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: DeepgramProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: DoubaoProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: OpenCodeProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: WayfinderProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: DroidFactoryProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: AlibabaCodingPlanProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: AlibabaTokenPlanProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: WindsurfProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: JetBrainsAIProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: KiloProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: OpenCodeGoProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: StepFunProvider.key))
+        XCTAssertNotNil(ProviderRegistry.shared.descriptor(forKey: AWSBedrockProvider.key))
     }
 
     func testRegisterIsIdempotent() {

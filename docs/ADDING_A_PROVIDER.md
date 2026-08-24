@@ -29,14 +29,15 @@ That's it. Open a PR.
 struct MyProvider: RegisterableProvider {
     static let key = "myservice"          // lowercase, persisted on Subscription
     static let displayName = "My Service" // shown in the picker
-    let requiresCredential = true         // collects API key via SecureField
+    let requiresCredential = true         // collects a credential via the UI
 
     static var descriptor: ProviderDescriptor {
         ProviderDescriptor(
             key: key,
             displayName: displayName,
             requiresCredential: true,
-            factory: { secret in MyProvider(apiKey: secret ?? "") }
+            credentialSource: .manual,     // or .localFile / .keychainItem / .browserCookie
+            factory: { credential in MyProvider(apiKey: credential?.value ?? "") }
         )
     }
 
@@ -64,13 +65,47 @@ static let builtIns: [any RegisterableProvider.Type] = [
 
 | Concern             | Rule                                                                                          |
 |---------------------|-----------------------------------------------------------------------------------------------|
-| Networking          | `URLSession` + `async/await` only — **no** third-party HTTP clients. Inject `HTTPClient` for tests. |
+| Networking          | `URLSession` + `async/await` only — **no** third-party HTTP clients. Use `ProviderHTTP.fetchJSON` for request + response validation + decoding. Inject `HTTPClient` for tests. |
 | Money               | `Decimal`, never `Double`.                                                                    |
 | Errors              | Throw `ProviderError`. Map upstream `401/403 → .invalidCredential`, `429 → .rateLimited`, decode failures → `.decoding(detail)`, transport → `.network(detail)`. |
+| Hardcoded URLs      | Use `ProviderHTTP.hardcodedURL("https://...")` instead of force-unwrapping `URL(string:)`. |
 | Secrets             | The framework writes the API key into Keychain (`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`) under service `com.likkee.<key>` keyed by the subscription UUID. The factory closure receives it as `secret`. |
 | Concurrency         | Provider types are `Sendable`. No mutable shared state. `SyncEngine` calls each provider concurrently in a `TaskGroup` with a per-provider 15s timeout. |
 | Naming              | `key` lowercase (`"anthropic"`); `displayName` as the user reads it (`"Anthropic"`).        |
 | File layout         | One primary type per file, filename matches type. Tests mirror the source path under `MiaTests/`. |
+
+## Credential sources
+
+Providers declare how their credential is obtained via the `credentialSource`
+parameter on `ProviderDescriptor`:
+
+| Source | Meaning | UI behavior |
+|---|---|---|
+| `.manual` | User pastes an API key; stored in Mia's Keychain under `com.likkee.<key>`. | SecureField is required for new subscriptions. |
+| `.localFile(path:keyPath:environmentOverride:)` | Reads an existing file from the Mac (e.g. `~/.codex/auth.json`). | No input required; a manual override is optional. |
+| `.keychainItem(service:account:isGeneric:)` | Reads another app's Keychain item (e.g. Zed's editor session). | No input required; a manual override is optional. |
+| `.browserCookie(browser:domains:cookieNames:)` | Reads a browser cookie (Firefox plaintext is supported; Chrome/Safari require manual Cookie header paste today). | SecureField for manual Cookie header is optional. |
+| `.oauthDeviceFlow(OAuthDeviceFlowSource)` | OAuth 2.0 device-code flow (e.g. GitHub). | Opens a browser for user authorization and polls for a token. |
+
+The `SyncEngine` resolves credentials through `CredentialResolverFactory` before
+calling `fetchUsage()`. The resolved `ResolvedCredential` contains both the secret
+value and an optional `account` (e.g. the Zed user ID) for providers that need an
+identity header.
+
+## Local-source providers (CodexBar-style)
+
+For apps that leave credentials or session data on the Mac, Mia can read them
+instead of asking the user to paste a key. Examples:
+
+- **Codex** reads `~/.codex/auth.json` and calls `chatgpt.com/backend-api/wham/usage`.
+- **Claude** reads `~/.claude/.credentials.json` and calls `api.anthropic.com/api/oauth/usage`.
+- **Cursor** reads a browser Cookie header for `cursor.com` and calls `cursor.com/api/usage-summary`.
+- **Zed** reads the Zed editor's Keychain item for `https://zed.dev` and calls `cloud.zed.dev/client/users/me`.
+
+Local-source providers are registered the same way as API-key providers; only
+the `credentialSource` differs. If you add a provider that reads a new directory,
+add a corresponding sandbox temporary exception in `Mia/Mia.entitlements` or move
+to a user-granted security-scoped bookmark in the future.
 
 ## What `fetchPlan()` vs `fetchUsage()` returns
 

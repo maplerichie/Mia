@@ -16,10 +16,6 @@ struct KeychainStore: Sendable {
     /// Service identifier used to namespace items, e.g. `"com.likkee.anthropic"`.
     let service: String
 
-    init(service: String) {
-        self.service = service
-    }
-
     // MARK: API
 
     func setSecret(_ secret: String, account: String) throws {

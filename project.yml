@@ -30,14 +30,27 @@ targets:
         LSUIElement: true
         CFBundleName: Mia
         CFBundleDisplayName: Mia
-        CFBundleShortVersionString: "0.1.0"
-        CFBundleVersion: "1"
+        CFBundleShortVersionString: "0.1.2"
+        CFBundleVersion: "2"
         NSHumanReadableCopyright: "© 2026 Mia"
     entitlements:
       path: Mia/Mia.entitlements
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.network.client: true
+        com.apple.security.temporary-exception.files.home-relative-path.read-only:
+          - /.codex
+          - /.claude
+          - /.config/zed
+          - /.config/manicode
+          - /.config/kilo
+          - /.config/opencode-go
+          - /Library/Application Support/Cursor
+          - /Library/Application Support/Firefox/Profiles
+          - /Library/Application Support/JetBrains
+          - /Library/Application Support/Windsurf
+          - /.local/share
+          - /.pi
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.likkee.Mia

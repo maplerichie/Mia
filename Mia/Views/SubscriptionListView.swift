@@ -6,56 +6,204 @@ struct SubscriptionListView: View {
     let onAdd: () -> Void
     let onEdit: (Subscription) -> Void
 
+    @State private var searchText = ""
+    @State private var sortOption: SortOption = .resetDate
+    @State private var statusFilter: StatusFilter = .all
+
+    private enum SortOption: String, CaseIterable, Identifiable, Sendable {
+        case resetDate
+        case renewalDate
+        case cost
+        case name
+
+        var id: String { rawValue }
+
+        var displayName: String {
+            switch self {
+            case .resetDate: "Reset Date"
+            case .renewalDate: "Renewal Date"
+            case .cost: "Cost"
+            case .name: "Name"
+            }
+        }
+    }
+
+    private enum StatusFilter: String, CaseIterable, Identifiable, Sendable {
+        case all
+        case error
+        case syncing
+
+        var id: String { rawValue }
+
+        var displayName: String {
+            switch self {
+            case .all: "All"
+            case .error: "Error"
+            case .syncing: "Syncing"
+            }
+        }
+    }
+
     var body: some View {
         if store.subscriptions.isEmpty {
             emptyState
         } else {
-            List {
-                ForEach(store.subscriptions) { subscription in
-                    SubscriptionRow(
-                        subscription: subscription,
-                        latestUsage: store.latestUsage(for: subscription),
-                        recentSnapshots: store.recentSnapshots(for: subscription, days: 7),
-                        status: syncEngine.statuses[subscription.id] ?? .idle,
-                        onEdit: { onEdit(subscription) },
-                        onDelete: { store.delete(subscription) }
-                    )
-                    .contextMenu {
-                        Button("Edit", systemImage: "pencil") { onEdit(subscription) }
-                        Button("Sync this one", systemImage: "arrow.clockwise") {
-                            Task { await syncEngine.syncOne(id: subscription.id) }
-                        }
-                        Button("Copy cost", systemImage: "doc.on.doc") {
-                            let s = subscription.cost.formatted(.currency(code: subscription.currency))
-                            let pb = NSPasteboard.general
-                            pb.clearContents()
-                            pb.setString(s, forType: .string)
-                        }
-                        Divider()
-                        Button(role: .destructive) {
-                            store.delete(subscription)
-                        } label: {
-                            Label("Delete", systemImage: "trash")
+            VStack(spacing: 0) {
+                filterHeader
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8)
+                    .padding(.bottom, 4)
+                if filteredSubscriptions.isEmpty {
+                    noResultsState
+                } else {
+                    List {
+                        ForEach(filteredSubscriptions) { subscription in
+                            SubscriptionRow(
+                                subscription: subscription,
+                                latestUsage: store.latestUsage(for: subscription),
+                                recentSnapshots: store.recentSnapshots(for: subscription, days: 7),
+                                status: syncEngine.statuses[subscription.id] ?? .idle,
+                                onEdit: { onEdit(subscription) },
+                                onDelete: { store.delete(subscription) }
+                            )
+                            .contextMenu {
+                                Button("Edit", systemImage: "pencil") { onEdit(subscription) }
+                                Button("Sync this one", systemImage: "arrow.clockwise") {
+                                    Task { await syncEngine.syncOne(id: subscription.id) }
+                                }
+                                Button("Copy cost", systemImage: "doc.on.doc") {
+                                    let s = subscription.cost.formatted(.currency(code: subscription.currency))
+                                    let pb = NSPasteboard.general
+                                    pb.clearContents()
+                                    pb.setString(s, forType: .string)
+                                }
+                                Divider()
+                                Button(role: .destructive) {
+                                    store.delete(subscription)
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
                         }
                     }
+                    .listStyle(.inset)
                 }
             }
-            .listStyle(.inset)
         }
     }
 
-    private var emptyState: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "creditcard.and.123")
-                .font(.system(size: 36, weight: .light))
+    private var filteredSubscriptions: [Subscription] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).localizedLowercase
+        var result = store.subscriptions
+
+        if !query.isEmpty {
+            result = result.filter { sub in
+                sub.name.localizedLowercase.contains(query)
+                    || sub.plan.localizedLowercase.contains(query)
+            }
+        }
+
+        switch statusFilter {
+        case .all: break
+        case .error: result = result.filter { isError($0.id) }
+        case .syncing: result = result.filter { isSyncing($0.id) }
+        }
+
+        switch sortOption {
+        case .resetDate: result = result.sortedByResetDate()
+        case .renewalDate: result.sort { $0.nextRenewalDate < $1.nextRenewalDate }
+        case .cost: result.sort { $0.cost > $1.cost }
+        case .name: result.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        }
+
+        return result
+    }
+
+    private func isError(_ id: UUID) -> Bool {
+        if case .failure = syncEngine.statuses[id] { return true }
+        return false
+    }
+
+    private func isSyncing(_ id: UUID) -> Bool {
+        if case .syncing = syncEngine.statuses[id] { return true }
+        return false
+    }
+
+    @ViewBuilder
+    private var filterHeader: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                HStack(spacing: 4) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+                        .font(.system(size: 12))
+                    TextField("Search", text: $searchText)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 13))
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+
+                Picker("Sort", selection: $sortOption) {
+                    ForEach(SortOption.allCases) { option in
+                        Text(option.displayName).tag(option)
+                    }
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .controlSize(.small)
+                .frame(width: 88)
+            }
+
+            HStack(spacing: 6) {
+                ForEach(StatusFilter.allCases) { filter in
+                    Button(filter.displayName) {
+                        statusFilter = filter
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(statusFilter == filter ? Color.accentColor : Color.secondary.opacity(0.15))
+                    .foregroundStyle(statusFilter == filter ? .white : .primary)
+                    .controlSize(.mini)
+                }
+            }
+        }
+    }
+
+    private var noResultsState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 28, weight: .light))
                 .foregroundStyle(.tertiary)
-            Text("Track your first subscription")
+            Text("No subscriptions match")
                 .font(.headline)
-            Text("Stay on top of renewals and API usage — all stored locally.")
+            Text("Try a different search or filter.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.vertical, 24)
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 16) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.accentColor.opacity(0.12))
+                    .frame(width: 64, height: 64)
+                Image(systemName: "creditcard.and.123")
+                    .font(.system(size: 28, weight: .light))
+                    .foregroundStyle(Color.accentColor)
+            }
+            VStack(spacing: 4) {
+                Text("Track your first subscription")
+                    .font(.headline)
+                Text("Add a service and Mia will watch renewals, quotas, and usage — all on your Mac.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 28)
+            }
             Button(action: onAdd) {
                 Label("Add Subscription", systemImage: "plus")
             }
@@ -297,5 +445,37 @@ private struct Sparkline: View {
             .stroke(Color.accentColor.opacity(0.7), lineWidth: 1)
         }
         .help("7-day usage trend")
+    }
+}
+
+extension [Subscription] {
+    func sortedByResetDate(now: Date = .now) -> [Subscription] {
+        let calendar = Calendar.current
+        return sorted { lhs, rhs in
+            let lhsReset = lhs.nextQuotaResetDate(now: now).map { calendar.startOfDay(for: $0) }
+            let rhsReset = rhs.nextQuotaResetDate(now: now).map { calendar.startOfDay(for: $0) }
+
+            switch (lhsReset, rhsReset) {
+            case let (lhsReset?, rhsReset?) where lhsReset != rhsReset:
+                return lhsReset < rhsReset
+            case (.some, nil):
+                return true
+            case (nil, .some):
+                return false
+            default:
+                break
+            }
+
+            if lhs.nextRenewalDate != rhs.nextRenewalDate {
+                return lhs.nextRenewalDate < rhs.nextRenewalDate
+            }
+
+            let nameOrder = lhs.name.localizedStandardCompare(rhs.name)
+            if nameOrder != .orderedSame {
+                return nameOrder == .orderedAscending
+            }
+
+            return lhs.id.uuidString < rhs.id.uuidString
+        }
     }
 }

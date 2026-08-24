@@ -1,16 +1,43 @@
 import AppKit
 import SwiftUI
 
+/// Identifiers for the sheets presented from the popover.
+/// Shared between AppKit chrome (`MenuBarController`) and SwiftUI content
+/// (`PopoverRootView`) so the status-bar menu can open sheets.
+enum PopoverSheet: Identifiable, Sendable {
+    case add
+    case settings
+    case edit(UUID)
+    case welcome
+
+    var id: String {
+        switch self {
+        case .add: "add"
+        case .settings: "settings"
+        case .edit(let id): "edit-\(id.uuidString)"
+        case .welcome: "welcome"
+        }
+    }
+}
+
+/// Shared state between AppKit menu-bar chrome and the SwiftUI popover content.
+@MainActor
+@Observable
+final class PopoverState {
+    var activeSheet: PopoverSheet?
+}
+
 /// Owns the `NSStatusItem` in the system menu bar and the popover that hosts
 /// the SwiftUI subscription list.
 @MainActor
-final class MenuBarController: NSObject, NSPopoverDelegate {
+final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
     private let statusItem: NSStatusItem
     private let popover: NSPopover
     private let store: SubscriptionStore
     private let settings: AppSettings
     private let syncEngine: SyncEngine
     private let notifications: NotificationsService
+    private let popoverState = PopoverState()
 
     init(
         store: SubscriptionStore,
@@ -44,6 +71,8 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             button.imagePosition = .imageLeft
             button.target = self
             button.action = #selector(togglePopover(_:))
+            // Distinguish left-click (open popover) from right-click (show menu).
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
         refreshMenuBarTitle()
     }
@@ -87,12 +116,18 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
                 store: store,
                 settings: settings,
                 syncEngine: syncEngine,
-                notifications: notifications
+                notifications: notifications,
+                popoverState: popoverState
             )
         )
     }
 
     @objc private func togglePopover(_ sender: Any?) {
+        guard let event = NSApp.currentEvent else { return }
+        if event.type == .rightMouseUp {
+            showStatusBarMenu()
+            return
+        }
         if popover.isShown {
             popover.performClose(sender)
         } else {
@@ -118,6 +153,52 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             window.makeFirstResponder(nil)
         }
         statusItem.button?.highlight(true)
+    }
+
+    private func showStatusBarMenu() {
+        let menu = NSMenu()
+        menu.delegate = self
+        menu.addItem(withTitle: "Sync Now", action: #selector(syncNow(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Add Subscription…", action: #selector(addSubscription(_:)), keyEquivalent: "")
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Settings…", action: #selector(openSettings(_:)), keyEquivalent: "")
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Quit Mia", action: #selector(quit(_:)), keyEquivalent: "q")
+        menu.items.forEach { $0.target = self }
+        // Attach the menu temporarily so `performClick` opens it, then remove
+        // it in `menuDidClose` so left-clicks continue to toggle the popover.
+        statusItem.menu = menu
+        statusItem.button?.performClick(nil)
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        statusItem.menu = nil
+    }
+
+    @objc private func syncNow(_ sender: Any?) {
+        Task {
+            await syncEngine.syncAll()
+            await notifications.evaluate(
+                subscriptions: store.subscriptions,
+                latestUsage: { store.latestUsage(for: $0) },
+                settings: settings
+            )
+            refreshMenuBarTitle()
+        }
+    }
+
+    @objc private func addSubscription(_ sender: Any?) {
+        showPopover()
+        popoverState.activeSheet = .add
+    }
+
+    @objc private func openSettings(_ sender: Any?) {
+        showPopover()
+        popoverState.activeSheet = .settings
+    }
+
+    @objc private func quit(_ sender: Any?) {
+        NSApp.terminate(sender)
     }
 
     func popoverDidClose(_ notification: Notification) {

@@ -19,6 +19,7 @@ final class AppSettings {
         static let quotaAlertsEnabled = "settings.quotaAlertsEnabled"
         static let primaryCurrencyOverride = "settings.primaryCurrencyOverride"
         static let appearance = "settings.appearance"
+        static let hasSeenWelcome = "settings.hasSeenWelcome"
     }
 
     /// Allowed sync interval values (minutes). `0` means manual-only.
@@ -88,6 +89,11 @@ final class AppSettings {
         didSet { defaults.set(appearance.rawValue, forKey: Key.appearance) }
     }
 
+    /// `true` once the user has dismissed the first-run welcome sheet.
+    var hasSeenWelcome: Bool {
+        didSet { defaults.set(hasSeenWelcome, forKey: Key.hasSeenWelcome) }
+    }
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         defaults.register(defaults: [
@@ -100,7 +106,8 @@ final class AppSettings {
             Key.renewalAlertsEnabled: true,
             Key.quotaAlertsEnabled: true,
             Key.primaryCurrencyOverride: "",
-            Key.appearance: AppearancePreference.system.rawValue
+            Key.appearance: AppearancePreference.system.rawValue,
+            Key.hasSeenWelcome: false
         ])
         self.renewalThresholdDays = defaults.integer(forKey: Key.renewalThresholdDays)
         self.quotaThresholdPercent = defaults.integer(forKey: Key.quotaThresholdPercent)
@@ -113,6 +120,7 @@ final class AppSettings {
         self.primaryCurrencyOverride = defaults.string(forKey: Key.primaryCurrencyOverride) ?? ""
         let raw = defaults.string(forKey: Key.appearance) ?? AppearancePreference.system.rawValue
         self.appearance = AppearancePreference(rawValue: raw) ?? .system
+        self.hasSeenWelcome = defaults.bool(forKey: Key.hasSeenWelcome)
     }
 }
 

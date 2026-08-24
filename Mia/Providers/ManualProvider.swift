@@ -10,8 +10,13 @@ struct ManualProvider: RegisterableProvider {
 
     let requiresCredential = false
 
-    func fetchPlan() async throws -> PlanInfo? { nil }
-    func fetchUsage() async throws -> UsageInfo? { nil }
+    func fetchPlan() async throws -> PlanInfo? {
+        nil
+    }
+
+    func fetchUsage() async throws -> UsageInfo? {
+        nil
+    }
 
     static var descriptor: ProviderDescriptor {
         ProviderDescriptor(

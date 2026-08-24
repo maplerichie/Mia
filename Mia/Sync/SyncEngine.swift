@@ -92,7 +92,7 @@ final class SyncEngine {
     func syncOne(id: UUID) async {
         guard let subscription = store.subscriptions.first(where: { $0.id == id }) else { return }
         statuses[id] = .syncing
-        let provider = makeProvider(forSubscriptionID: id, providerKey: subscription.providerKey)
+        let provider = await makeProvider(forSubscriptionID: id, providerKey: subscription.providerKey)
         guard let provider else {
             statuses[id] = .failure(message: "Provider unavailable")
             return
@@ -106,21 +106,25 @@ final class SyncEngine {
 
     // MARK: - Internals
 
-    private func makeProvider(forSubscriptionID id: UUID, providerKey: String) -> (any SubscriptionProvider)? {
+    private func makeProvider(forSubscriptionID id: UUID, providerKey: String) async -> (any SubscriptionProvider)? {
         guard let descriptor = registry.descriptor(forKey: providerKey) else {
             return nil
         }
-        var secret: String?
+        var credential: ResolvedCredential?
         if descriptor.requiresCredential {
-            let keychain = KeychainStore(service: "\(keychainServicePrefix).\(providerKey)")
+            let resolver = CredentialResolverFactory.resolver(
+                for: descriptor.credentialSource,
+                providerKey: providerKey,
+                subscriptionID: id
+            )
             do {
-                secret = try keychain.secret(account: id.uuidString)
+                credential = try await resolver.resolve()
             } catch {
                 return nil
             }
-            guard secret != nil else { return nil }
+            guard credential != nil else { return nil }
         }
-        return descriptor.makeProvider(secret: secret)
+        return descriptor.makeProvider(credential: credential)
     }
 
     private func apply(result: Result<UsageInfo?, Error>, toSubscriptionID id: UUID) {
@@ -172,17 +176,37 @@ final class SyncEngine {
 
     private static func message(for error: Error) -> String {
         if let providerError = error as? ProviderError {
-            switch providerError {
-            case .missingCredential: return "Missing API key"
-            case .invalidCredential: return "Invalid API key"
-            case .network(let detail): return "Network: \(detail)"
-            case .rateLimited: return "Rate limited"
-            case .decoding(let detail): return "Decode: \(detail)"
-            case .unsupported: return "Provider unavailable"
-            case .timeout: return "Timed out"
-            case .other(let detail): return detail
-            }
+            return providerMessage(providerError)
+        }
+        if let credentialError = error as? CredentialResolutionError {
+            return credentialMessage(credentialError)
         }
         return String(describing: error)
+    }
+
+    private static func providerMessage(_ error: ProviderError) -> String {
+        switch error {
+        case .missingCredential: return "Missing API key"
+        case .invalidCredential: return "Invalid API key"
+        case .network(let detail): return "Network: \(detail)"
+        case .rateLimited: return "Rate limited"
+        case .decoding(let detail): return "Decode: \(detail)"
+        case .unsupported: return "Provider unavailable"
+        case .timeout: return "Timed out"
+        case .other(let detail): return detail
+        }
+    }
+
+    private static func credentialMessage(_ error: CredentialResolutionError) -> String {
+        switch error {
+        case .sourceUnavailable: return "Credential source unavailable"
+        case .fileNotFound(let path): return "Missing local file: \(path)"
+        case .fileUnreadable(let path): return "Cannot read: \(path)"
+        case .keyNotFound(let key): return "Missing key: \(key)"
+        case .keychainAccessDenied(let detail): return "Keychain access denied: \(detail)"
+        case .cookieStoreUnavailable(let browser): return "\(browser.displayName) cookie store unavailable"
+        case .decoding(let detail): return "Decode: \(detail)"
+        case .other(let detail): return detail
+        }
     }
 }

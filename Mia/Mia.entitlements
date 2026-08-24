@@ -6,5 +6,20 @@
 	<true/>
 	<key>com.apple.security.network.client</key>
 	<true/>
+	<key>com.apple.security.temporary-exception.files.home-relative-path.read-only</key>
+	<array>
+		<string>/.codex</string>
+		<string>/.claude</string>
+		<string>/.config/zed</string>
+		<string>/.config/manicode</string>
+		<string>/.config/kilo</string>
+		<string>/.config/opencode-go</string>
+		<string>/Library/Application Support/Cursor</string>
+		<string>/Library/Application Support/Firefox/Profiles</string>
+		<string>/Library/Application Support/JetBrains</string>
+		<string>/Library/Application Support/Windsurf</string>
+		<string>/.local/share</string>
+		<string>/.pi</string>
+	</array>
 </dict>
 </plist>

@@ -16,38 +16,57 @@ struct SettingsView: View {
     var body: some View {
         VStack(spacing: 0) {
             Form {
-                Section("Sync") {
-                    Picker("Sync interval", selection: $settings.syncIntervalMinutes) {
+                Section {
+                    Picker(selection: $settings.syncIntervalMinutes) {
                         ForEach(AppSettings.syncIntervalChoices, id: \.self) { minutes in
                             Text(label(forMinutes: minutes)).tag(minutes)
                         }
+                    } label: {
+                        Label("Sync interval", systemImage: "arrow.clockwise")
                     }
+                } header: {
+                    sectionHeader("Sync", icon: "arrow.clockwise")
                 }
 
-                Section("Notifications") {
-                    Toggle("Enable notifications", isOn: $settings.notificationsEnabled)
-                    Toggle("Renewal alerts", isOn: $settings.renewalAlertsEnabled)
-                        .disabled(!settings.notificationsEnabled)
-                    Toggle("Quota alerts", isOn: $settings.quotaAlertsEnabled)
-                        .disabled(!settings.notificationsEnabled)
+                Section {
+                    Toggle(isOn: $settings.notificationsEnabled) {
+                        Label("Enable notifications", systemImage: "bell")
+                    }
+                    Toggle(isOn: $settings.renewalAlertsEnabled) {
+                        Label("Renewal alerts", systemImage: "calendar.badge.exclamationmark")
+                    }
+                    .disabled(!settings.notificationsEnabled)
+                    Toggle(isOn: $settings.quotaAlertsEnabled) {
+                        Label("Quota alerts", systemImage: "chart.bar.fill")
+                    }
+                    .disabled(!settings.notificationsEnabled)
                     Stepper(
-                        "Renewal warning: \(settings.renewalThresholdDays) day\(settings.renewalThresholdDays == 1 ? "" : "s") before",
                         value: $settings.renewalThresholdDays,
                         in: 0...30
-                    )
+                    ) {
+                        Label(
+                            "Renewal warning: \(settings.renewalThresholdDays) day\(settings.renewalThresholdDays == 1 ? "" : "s") before",
+                            systemImage: "exclamationmark.bubble"
+                        )
+                    }
                     .disabled(!settings.notificationsEnabled || !settings.renewalAlertsEnabled)
                     Stepper(
-                        "Quota warning at \(settings.quotaThresholdPercent)%",
                         value: $settings.quotaThresholdPercent,
                         in: 0...100,
                         step: 5
-                    )
+                    ) {
+                        Label(
+                            "Quota warning at \(settings.quotaThresholdPercent)%",
+                            systemImage: "percent"
+                        )
+                    }
                     .disabled(!settings.notificationsEnabled || !settings.quotaAlertsEnabled)
                     if notificationStatus == .denied {
-                        HStack {
+                        HStack(alignment: .top, spacing: 6) {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .foregroundStyle(.orange)
-                            Text("Notifications are disabled in System Settings.")
+                                .padding(.top, 2)
+                            Text("Notifications are disabled in System Settings. Enable them to receive renewal and quota alerts.")
                                 .font(.caption)
                             Spacer()
                             Button("Open Settings") {
@@ -58,37 +77,57 @@ struct SettingsView: View {
                             .controlSize(.small)
                         }
                     }
+                } header: {
+                    sectionHeader("Notifications", icon: "bell")
                 }
 
-                Section("Display") {
-                    Toggle("Show monthly total in menu bar", isOn: $settings.showMenuBarTotal)
-                    Picker("Primary currency", selection: $settings.primaryCurrencyOverride) {
+                Section {
+                    Toggle(isOn: $settings.showMenuBarTotal) {
+                        Label("Show monthly total in menu bar", systemImage: "menubar.rectangle")
+                    }
+                    Picker(selection: $settings.primaryCurrencyOverride) {
                         Text("Auto-detect").tag("")
                         ForEach(CurrencyCatalog.common) { entry in
                             Text("\(entry.code) — \(entry.name)").tag(entry.code)
                         }
+                    } label: {
+                        Label("Primary currency", systemImage: "dollarsign.circle")
                     }
-                    Picker("Appearance", selection: $settings.appearance) {
+                    Picker(selection: $settings.appearance) {
                         ForEach(AppearancePreference.allCases) { pref in
                             Text(pref.displayName).tag(pref)
                         }
+                    } label: {
+                        Label("Appearance", systemImage: "paintbrush")
                     }
+                } header: {
+                    sectionHeader("Display", icon: "display")
                 }
 
-                Section("General") {
-                    Toggle("Launch at login", isOn: $settings.launchAtLogin)
+                Section {
+                    Toggle(isOn: $settings.launchAtLogin) {
+                        Label("Launch at login", systemImage: "power")
+                    }
+                } header: {
+                    sectionHeader("General", icon: "gear")
                 }
 
-                Section("About") {
+                Section {
                     HStack {
-                        Text("Mia")
+                        Label("Mia", systemImage: "creditcard.and.123")
                         Spacer()
                         Text(bundleVersion).foregroundStyle(.secondary)
                     }
-                    Link("GitHub", destination: URL(string: "https://github.com/maplerichie/mia")!)
+                    if let githubURL = URL(string: "https://github.com/maplerichie/mia") {
+                        Link(destination: githubURL) {
+                            Label("GitHub", systemImage: "link")
+                        }
+                    }
                     Text("Made with ♥ — your data stays on this Mac.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                } header: {
+                    sectionHeader("About", icon: "info.circle")
                 }
             }
             .formStyle(.grouped)
@@ -104,6 +143,13 @@ struct SettingsView: View {
         .task {
             notificationStatus = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
         }
+    }
+
+    private func sectionHeader(_ title: String, icon: String) -> some View {
+        Label(title, systemImage: icon)
+            .font(.headline)
+            .foregroundStyle(.primary)
+            .textCase(nil)
     }
 
     private func label(forMinutes minutes: Int) -> String {

@@ -88,7 +88,8 @@ final class NotificationsService {
         if daysAway <= 0 {
             body = "\(subscription.name) renews today (\(subscription.cost.formatted(.currency(code: subscription.currency))))."
         } else {
-            body = "\(subscription.name) renews in \(daysAway) day\(daysAway == 1 ? "" : "s") — \(subscription.cost.formatted(.currency(code: subscription.currency)))."
+            let cost = subscription.cost.formatted(.currency(code: subscription.currency))
+            body = "\(subscription.name) renews in \(daysAway) day\(daysAway == 1 ? "" : "s") — \(cost)."
         }
         await post(title: "Upcoming renewal", body: body, kind: .renewal, subscriptionID: subscription.id)
         markFired(.renewal, for: subscription)
@@ -145,7 +146,7 @@ final class NotificationsService {
     }
 
     /// Test/debug helper.
-    func _resetDebounce(for subscriptionID: UUID, kind: Kind) {
+    func resetDebounce(for subscriptionID: UUID, kind: Kind) {
         defaults.removeObject(forKey: defaultsKey(kind, subscriptionID))
     }
 }

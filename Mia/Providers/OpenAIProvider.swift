@@ -17,7 +17,7 @@ struct OpenAIProvider: RegisterableProvider {
             key: key,
             displayName: displayName,
             requiresCredential: true,
-            factory: { secret in OpenAIProvider(apiKey: secret ?? "") }
+            factory: { credential in OpenAIProvider(apiKey: credential?.value ?? "") }
         )
     }
 
@@ -28,7 +28,7 @@ struct OpenAIProvider: RegisterableProvider {
 
     init(
         apiKey: String,
-        baseURL: URL = URL(string: "https://api.openai.com")!,
+        baseURL: URL = ProviderHTTP.hardcodedURL("https://api.openai.com"),
         client: HTTPClient = URLSessionHTTPClient(),
         now: @escaping @Sendable () -> Date = { .now }
     ) {
@@ -38,36 +38,39 @@ struct OpenAIProvider: RegisterableProvider {
         self.now = now
     }
 
-    func fetchPlan() async throws -> PlanInfo? { nil }
+    func fetchPlan() async throws -> PlanInfo? {
+        nil
+    }
 
     func fetchUsage() async throws -> UsageInfo? {
         guard !apiKey.isEmpty else { throw ProviderError.missingCredential }
 
         let (start, end) = AnthropicProvider.currentMonthRange(reference: now())
-        var components = URLComponents(
+        guard var components = URLComponents(
             url: baseURL.appendingPathComponent("/v1/organization/usage/completions"),
             resolvingAgainstBaseURL: false
-        )!
+        ) else {
+            throw ProviderError.unsupported
+        }
         components.queryItems = [
             URLQueryItem(name: "start_time", value: String(Int(start.timeIntervalSince1970))),
             URLQueryItem(name: "end_time", value: String(Int(end.timeIntervalSince1970))),
             URLQueryItem(name: "bucket_width", value: "1d")
         ]
+        guard let requestURL = components.url else {
+            throw ProviderError.unsupported
+        }
 
-        var request = URLRequest(url: components.url!)
+        var request = URLRequest(url: requestURL)
         request.httpMethod = "GET"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "accept")
 
-        let (data, response) = try await client.data(for: request)
-        try AnthropicProvider.validate(response: response) // shared status mapping
-
-        let payload: UsagePage
-        do {
-            payload = try JSONDecoder().decode(UsagePage.self, from: data)
-        } catch {
-            throw ProviderError.decoding(String(describing: error))
-        }
+        let (payload, data) = try await ProviderHTTP.fetchJSON(
+            UsagePage.self,
+            request: request,
+            client: client
+        )
 
         return UsageInfo(
             used: Double(payload.totalTokens),

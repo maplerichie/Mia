@@ -19,9 +19,11 @@ struct TemplateProvider: RegisterableProvider {
     // Human-readable name surfaced in the "Add Subscription" picker.
     static let displayName = "Template"
 
-    // Set to `true` if your service needs an API key. The key is collected
-    // by `AddSubscriptionView` (SecureField) and stored in Keychain under
-    // `com.likkee.<key>` keyed by the subscription UUID.
+    // Set to `true` if your service needs a credential. The source controls how
+    // it is collected: `.manual` for user-pasted API keys, `.localFile` for
+    // files like `~/.codex/auth.json`, `.keychainItem` for another app's
+    // Keychain item, `.browserCookie` for a web session cookie, or
+    // `.oauthDeviceFlow` for an OAuth device-code flow (e.g. GitHub Copilot).
     let requiresCredential = true
 
     // MARK: Registration
@@ -31,7 +33,9 @@ struct TemplateProvider: RegisterableProvider {
             key: key,
             displayName: displayName,
             requiresCredential: true,
-            factory: { secret in TemplateProvider(apiKey: secret ?? "") }
+            // Change this to match the credential source for your provider.
+            credentialSource: .manual,
+            factory: { credential in TemplateProvider(apiKey: credential?.value ?? "") }
         )
     }
 
@@ -44,7 +48,7 @@ struct TemplateProvider: RegisterableProvider {
 
     init(
         apiKey: String,
-        baseURL: URL = URL(string: "https://api.example.com")!,
+        baseURL: URL = ProviderHTTP.hardcodedURL("https://api.example.com"),
         client: HTTPClient = URLSessionHTTPClient(),
         now: @escaping @Sendable () -> Date = { .now }
     ) {
@@ -72,30 +76,23 @@ struct TemplateProvider: RegisterableProvider {
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "accept")
 
-        let (data, response) = try await client.data(for: request)
-        switch response.statusCode {
-        case 200...299: break
-        case 401, 403: throw ProviderError.invalidCredential
-        case 429: throw ProviderError.rateLimited
-        default: throw ProviderError.network("HTTP \(response.statusCode)")
-        }
+        let (payload, data) = try await ProviderHTTP.fetchJSON(
+            Payload.self,
+            request: request,
+            client: client
+        )
+        return UsageInfo(
+            used: payload.used,
+            limit: payload.limit,
+            unit: payload.unit,
+            capturedAt: now(),
+            rawJSON: String(data: data, encoding: .utf8)
+        )
+    }
 
-        struct Payload: Decodable {
-            let used: Double
-            let limit: Double?
-            let unit: String
-        }
-        do {
-            let payload = try JSONDecoder().decode(Payload.self, from: data)
-            return UsageInfo(
-                used: payload.used,
-                limit: payload.limit,
-                unit: payload.unit,
-                capturedAt: now(),
-                rawJSON: String(data: data, encoding: .utf8)
-            )
-        } catch {
-            throw ProviderError.decoding(String(describing: error))
-        }
+    private struct Payload: Decodable {
+        let used: Double
+        let limit: Double?
+        let unit: String
     }
 }

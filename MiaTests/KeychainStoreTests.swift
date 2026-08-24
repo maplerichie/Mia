@@ -1,6 +1,6 @@
+@testable import Mia
 import Security
 import XCTest
-@testable import Mia
 
 final class KeychainStoreTests: XCTestCase {
     private let service = "com.likkee.tests.\(UUID().uuidString)"

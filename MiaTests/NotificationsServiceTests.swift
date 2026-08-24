@@ -1,7 +1,7 @@
 import Foundation
+@testable import Mia
 import UserNotifications
 import XCTest
-@testable import Mia
 
 @MainActor
 final class NotificationsServiceTests: XCTestCase {
@@ -56,7 +56,7 @@ final class NotificationsServiceTests: XCTestCase {
         defaults.set(now, forKey: key)
         XCTAssertNotNil(defaults.object(forKey: key))
 
-        service._resetDebounce(for: id, kind: .renewal)
+        service.resetDebounce(for: id, kind: .renewal)
         XCTAssertNil(defaults.object(forKey: key))
     }
 }

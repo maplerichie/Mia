@@ -1,7 +1,7 @@
 import Foundation
+@testable import Mia
 import SwiftData
 import XCTest
-@testable import Mia
 
 @MainActor
 final class SubscriptionStoreTests: XCTestCase {
@@ -18,9 +18,9 @@ final class SubscriptionStoreTests: XCTestCase {
         let store = try makeStore()
         XCTAssertTrue(store.subscriptions.isEmpty)
 
-        store.create(Subscription(
+        try store.create(Subscription(
             name: "Spotify",
-            cost: Decimal(string: "9.99")!,
+            cost: XCTUnwrap(Decimal(string: "9.99")),
             nextRenewalDate: .now
         ))
 
@@ -61,9 +61,9 @@ final class SubscriptionStoreTests: XCTestCase {
         let store = try makeStore()
         let calendar = Calendar.current
         let now = Date()
-        let monthlyResetInTenDays = calendar.date(byAdding: .day, value: 10, to: now)!
-        let weeklyRenewalWithResetTomorrow = calendar.date(byAdding: .day, value: 43, to: now)!
-        let noResetCycle = calendar.date(byAdding: .day, value: 1, to: now)!
+        let monthlyResetInTenDays = try XCTUnwrap(calendar.date(byAdding: .day, value: 10, to: now))
+        let weeklyRenewalWithResetTomorrow = try XCTUnwrap(calendar.date(byAdding: .day, value: 43, to: now))
+        let noResetCycle = try XCTUnwrap(calendar.date(byAdding: .day, value: 1, to: now))
 
         store.create(Subscription(
             name: "Monthly Reset",
@@ -89,7 +89,7 @@ final class SubscriptionStoreTests: XCTestCase {
     func testAdvancePastRenewalsRollsForward() throws {
         let store = try makeStore()
         let cal = Calendar.current
-        let twoMonthsAgo = cal.date(byAdding: .month, value: -2, to: .now)!
+        let twoMonthsAgo = try XCTUnwrap(cal.date(byAdding: .month, value: -2, to: .now))
         store.create(Subscription(
             name: "Stale",
             cost: 5,
@@ -97,7 +97,7 @@ final class SubscriptionStoreTests: XCTestCase {
             nextRenewalDate: twoMonthsAgo
         ))
         store.advancePastRenewals()
-        let rolled = store.subscriptions.first!
+        let rolled = try XCTUnwrap(store.subscriptions.first)
         XCTAssertGreaterThan(rolled.nextRenewalDate, .now)
     }
 
@@ -106,8 +106,8 @@ final class SubscriptionStoreTests: XCTestCase {
         let sub = Subscription(name: "Tracked", cost: 5, nextRenewalDate: .now)
         store.create(sub)
         let fresh = UsageSnapshot(capturedAt: .now, used: 1, unit: "calls")
-        let stale = UsageSnapshot(
-            capturedAt: Calendar.current.date(byAdding: .day, value: -120, to: .now)!,
+        let stale = try UsageSnapshot(
+            capturedAt: XCTUnwrap(Calendar.current.date(byAdding: .day, value: -120, to: .now)),
             used: 1,
             unit: "calls"
         )

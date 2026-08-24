@@ -94,26 +94,16 @@ struct AddSubscriptionView: View {
                             Text(descriptor.displayName).tag(descriptor.key)
                         }
                     }
-                    if selectedDescriptor?.requiresCredential == true {
-                        SecureField(
-                            isEditing ? "API key (leave blank to keep)" : "API key",
-                            text: $apiKey
+                    if let descriptor = selectedDescriptor, descriptor.requiresCredential {
+                        CredentialSectionView(
+                            source: descriptor.credentialSource,
+                            providerKey: providerKey,
+                            editing: editing,
+                            apiKey: $apiKey,
+                            apiKeyError: apiKeyError,
+                            manualLabel: isEditing ? "Credential (leave blank to keep)" : "Credential",
+                            localLabel: "Override credential (optional)"
                         )
-                        .textContentType(.password)
-                        if let hint = ProviderHints.apiKeyHint(for: providerKey) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "info.circle")
-                                    .foregroundStyle(.secondary)
-                                Text(hint.text)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                if let url = hint.url {
-                                    Link("Open", destination: url)
-                                        .font(.caption)
-                                }
-                            }
-                        }
-                        errorRow(apiKeyError)
                     }
                     if providerKey == ManualProvider.key {
                         Picker("Icon", selection: $iconAssetName) {
@@ -229,6 +219,9 @@ struct AddSubscriptionView: View {
             .padding(12)
         }
         .frame(width: 380, height: 520)
+        .onChange(of: providerKey) {
+            apiKey = ""
+        }
         .confirmationDialog(
             "Delete \(editing?.name ?? "subscription")?",
             isPresented: $showDeleteConfirm,
@@ -276,17 +269,35 @@ struct AddSubscriptionView: View {
     }
 
     private var apiKeyError: String? {
-        guard selectedDescriptor?.requiresCredential == true else { return nil }
+        guard let descriptor = selectedDescriptor, descriptor.requiresCredential else { return nil }
         let blank = apiKey.trimmingCharacters(in: .whitespaces).isEmpty
         guard blank else { return nil }
-        // Blank is allowed only when editing and the existing credential is
-        // for the same provider (i.e. user is intentionally keeping it).
-        if let existing = editing,
-           existing.providerKey == providerKey,
-           existing.credential != nil {
+
+        // Local-source providers (file, keychain) do not require a pasted
+        // credential; they resolve it from the Mac at sync time. A manual
+        // override is still allowed, but optional.
+        switch descriptor.credentialSource {
+        case .localFile, .keychainItem:
             return nil
+        case .oauthDeviceFlow(let source):
+            // Connected during setup if apiKey is non-empty; otherwise require
+            // connection unless editing and keeping an existing credential.
+            if let existing = editing,
+               existing.providerKey == providerKey,
+               existing.credential != nil {
+                return nil
+            }
+            return "Connect with \(source.providerName) to continue."
+        case .manual, .browserCookie:
+            // Blank is allowed only when editing and the existing credential
+            // is for the same provider (i.e. user is intentionally keeping it).
+            if let existing = editing,
+               existing.providerKey == providerKey,
+               existing.credential != nil {
+                return nil
+            }
+            return "Credential is required for this provider."
         }
-        return "API key is required for this provider."
     }
 
     private var validationErrors: [String] {
@@ -374,7 +385,7 @@ struct AddSubscriptionView: View {
             customCycleMonths: max(1, customCycleMonths)
         )
 
-        if selectedDescriptor?.requiresCredential == true {
+        if selectedDescriptor?.requiresCredential == true, !trimmedKey.isEmpty {
             let service = "com.likkee.\(providerKey)"
             let keychain = KeychainStore(service: service)
             do {
@@ -384,7 +395,7 @@ struct AddSubscriptionView: View {
                     keychainService: service
                 )
             } catch {
-                keychainError = "Could not save API key: \(error)"
+                keychainError = "Could not save credential: \(error)"
                 return
             }
         }
@@ -437,7 +448,7 @@ struct AddSubscriptionView: View {
                         existing.credential?.keychainService = service
                     }
                 } catch {
-                    keychainError = "Could not save API key: \(error)"
+                    keychainError = "Could not save credential: \(error)"
                     return
                 }
             }

@@ -18,7 +18,7 @@ struct AnthropicProvider: RegisterableProvider {
             key: key,
             displayName: displayName,
             requiresCredential: true,
-            factory: { secret in AnthropicProvider(apiKey: secret ?? "") }
+            factory: { credential in AnthropicProvider(apiKey: credential?.value ?? "") }
         )
     }
 
@@ -29,7 +29,7 @@ struct AnthropicProvider: RegisterableProvider {
 
     init(
         apiKey: String,
-        baseURL: URL = URL(string: "https://api.anthropic.com")!,
+        baseURL: URL = ProviderHTTP.hardcodedURL("https://api.anthropic.com"),
         client: HTTPClient = URLSessionHTTPClient(),
         now: @escaping @Sendable () -> Date = { .now }
     ) {
@@ -39,36 +39,39 @@ struct AnthropicProvider: RegisterableProvider {
         self.now = now
     }
 
-    func fetchPlan() async throws -> PlanInfo? { nil }
+    func fetchPlan() async throws -> PlanInfo? {
+        nil
+    }
 
     func fetchUsage() async throws -> UsageInfo? {
         guard !apiKey.isEmpty else { throw ProviderError.missingCredential }
 
         let (start, end) = AnthropicProvider.currentMonthRange(reference: now())
-        var components = URLComponents(
+        guard var components = URLComponents(
             url: baseURL.appendingPathComponent("/v1/organizations/usage_report/messages"),
             resolvingAgainstBaseURL: false
-        )!
+        ) else {
+            throw ProviderError.unsupported
+        }
         components.queryItems = [
             URLQueryItem(name: "starting_at", value: ISO8601DateFormatter.utc.string(from: start)),
             URLQueryItem(name: "ending_at", value: ISO8601DateFormatter.utc.string(from: end))
         ]
+        guard let requestURL = components.url else {
+            throw ProviderError.unsupported
+        }
 
-        var request = URLRequest(url: components.url!)
+        var request = URLRequest(url: requestURL)
         request.httpMethod = "GET"
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         request.setValue(AnthropicProvider.apiVersion, forHTTPHeaderField: "anthropic-version")
         request.setValue("application/json", forHTTPHeaderField: "accept")
 
-        let (data, response) = try await client.data(for: request)
-        try AnthropicProvider.validate(response: response)
-
-        let payload: UsageReport
-        do {
-            payload = try JSONDecoder().decode(UsageReport.self, from: data)
-        } catch {
-            throw ProviderError.decoding(String(describing: error))
-        }
+        let (payload, data) = try await ProviderHTTP.fetchJSON(
+            UsageReport.self,
+            request: request,
+            client: client
+        )
 
         let total = payload.totalTokens
         return UsageInfo(
@@ -89,15 +92,6 @@ struct AnthropicProvider: RegisterableProvider {
         return (start, end)
     }
 
-    static func validate(response: HTTPURLResponse) throws {
-        switch response.statusCode {
-        case 200...299: return
-        case 401, 403: throw ProviderError.invalidCredential
-        case 429: throw ProviderError.rateLimited
-        default:
-            throw ProviderError.network("HTTP \(response.statusCode)")
-        }
-    }
 }
 
 // MARK: - Decoding
